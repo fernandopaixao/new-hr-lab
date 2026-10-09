@@ -62,7 +62,7 @@ orquestracao:
   derivar_estado_alvo: true
   operacoes:
     - operacao: CRIAR_CADASTRO
-      parametros: {dados: "=evento.dados"}
+      parametros: {colaborador_id: "=evento.colaborador_id", dados: "=evento.dados"}
       motivo: Evento de admissão traz os dados do candidato aprovado.
       base_legal: CLT art. 41 (registro do empregado)
     - operacao: AGENDAR_EXAME

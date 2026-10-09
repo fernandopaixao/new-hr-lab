@@ -225,3 +225,4 @@ frontend/node_modules/
 frontend/dist/
 .env
 dump.rdb
+.env.bak-*

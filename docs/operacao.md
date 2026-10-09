@@ -2,6 +2,49 @@
 
 ## Subir
 
+### Instalador
+
+| Sistema | Comando |
+| --- | --- |
+| Linux e macOS | `./scripts/install.sh` |
+| Windows | `scripts\install.cmd` ou `.\scripts\install.ps1` (Windows PowerShell 5.1 ou PowerShell 7) |
+
+O instalador faz, nesta ordem:
+
+1. Confere o Docker, se ele está rodando, e o Docker Compose 2.24 ou mais novo (o `docker-compose.yml` usa `env_file` opcional, que exige essa versão).
+2. Cria o `.env` a partir do `.env.example` ou, se já existir, guarda uma cópia (`.env.bak-AAAAMMDDHHMMSS`) e altera só as chaves que escolhe.
+3. Recusa uma porta da interface ocupada por outro programa. Uma instalação anterior do laboratório na mesma porta não conta.
+4. Encontra o Ollama. No modo `auto`, usa o da máquina se ele responder em `localhost:11434`; se não, oferece Ollama em container, Ollama na rede ou nenhum.
+5. Testa o Ollama **de dentro de um container**, do mesmo jeito que a API vai acessá-lo. É o que pega o caso mais comum no Linux: o Ollama escutando só em 127.0.0.1. Nesse caso mostra como liberar e para.
+6. Baixa os modelos que faltam (`ollama pull` ou a API do Ollama). No modo container, o serviço `ollama-pull` baixa e o instalador espera.
+7. Sobe o compose (`up -d --build`, com a quantidade de workers pedida) e espera a API responder.
+8. Alinha as configurações em execução com as escolhas da instalação. Configurações salvas pela tela Configurações valem mais que o `.env`; sem esse passo, uma URL antiga do Ollama continuaria valendo.
+9. Pede à API para conferir o Ollama e mostra o resultado e um resumo.
+
+Pode ser rodado de novo a qualquer momento para trocar o modo do Ollama, os modelos, a porta ou a quantidade de workers. Os dados (casos, log, colaboradores) ficam.
+
+| Opção (Linux e macOS) | Opção (Windows) | Efeito |
+| --- | --- | --- |
+| `--ollama MODO` | `-Ollama MODO` | `auto` (padrão), `local`, `rede`, `container` ou `nenhum`. |
+| `--ollama-url URL` | `-OllamaUrl URL` | Ollama em outra máquina; implica o modo `rede`. |
+| `--modelo NOME` | `-Modelo NOME` | Modelo dos agentes (padrão `qwen2.5:7b`). |
+| `--embedding NOME` | `-Embedding NOME` | Modelo de embedding (padrão `nomic-embed-text`). |
+| `--sem-modelos` | `-SemModelos` | Não baixa modelos. |
+| `--porta N` | `-Porta N` | Porta da interface (padrão 8080). |
+| `--workers N` | `-Workers N` | Quantidade de workers (padrão 1). |
+| `--simulado` | `-Simulado` | Liga o agente simulado quando o Ollama cair. Fica desligado sem esta opção, exceto no modo `nenhum`. |
+| `--sem-build` | `-SemBuild` | Sobe sem reconstruir as imagens. |
+| `--sim` | `-Sim` | Não pergunta nada. Sem Ollama na máquina, escolhe o modo container. |
+
+| Modo | `OLLAMA_BASE_URL` gravado | Observação |
+| --- | --- | --- |
+| `local` | `http://host.docker.internal:11434` | No Linux, o Ollama precisa escutar em 0.0.0.0. |
+| `rede` | a URL informada | O Ollama remoto precisa escutar em 0.0.0.0 e a porta 11434 precisa estar liberada. |
+| `container` | `http://ollama:11434` | Grava `COMPOSE_PROFILES=ollama`, então um `docker compose up -d` depois também sobe o Ollama. Os modelos ficam no volume `ollama`. |
+| `nenhum` | o que já estava | Liga o agente simulado e os embeddings simulados. |
+
+### Manualmente
+
 ```bash
 cp .env.example .env
 docker compose up -d --build

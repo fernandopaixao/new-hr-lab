@@ -25,14 +25,24 @@ A documentação completa, com as decisões arquiteturais, está em [docs/](docs
 
 ## Como rodar
 
-Pré-requisitos: Docker com Compose e um Ollama acessível.
+Pré-requisitos: Docker com Compose 2.24 ou mais novo. O Ollama é opcional: o instalador usa o da máquina, um da rede ou sobe um em container.
+
+```bash
+./scripts/install.sh            # Linux e macOS
+```
+
+```powershell
+scripts\install.cmd             # Windows (ou .\scripts\install.ps1)
+```
+
+O instalador confere os pré-requisitos, encontra o Ollama, testa se os containers o alcançam, grava o `.env`, baixa os modelos, sobe o laboratório e confere a IA de dentro da API. Ao final, abra http://localhost:8080. Com `--sim` (ou `-Sim` no Windows) ele não faz perguntas; `--ajuda` lista as opções. Os detalhes estão em [docs/operacao.md](docs/operacao.md#instalador).
+
+Sem o instalador:
 
 ```bash
 cp .env.example .env        # ajuste OLLAMA_BASE_URL se necessário
 docker compose up -d --build
 ```
-
-Abra http://localhost:8080.
 
 ### Onde está o Ollama
 

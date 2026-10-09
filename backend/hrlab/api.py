@@ -292,7 +292,7 @@ async def validate_contract(body: dict = Body(...)) -> dict:
     except ContractError as exc:
         return {"valido": False, "problemas": [str(exc)]}
     problems = validate(doc)
-    return {"valido": not problems, "problemas": problems, "contrato": doc}
+    return {"valido": not problems, "problemas": problems, "contrato": doc, "yaml": to_yaml(doc)}
 
 
 @app.post("/api/contracts")

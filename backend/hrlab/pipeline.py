@@ -118,11 +118,18 @@ class Pipeline:
         ctl = await self.store.control()
         return bool(case.get("depuracao") or stage in (case.get("breakpoints") or []) or stage in ctl.get("breakpoints", []))
 
-    async def run_stage(self, stage: str, case_id: str, worker: str = "worker") -> None:
+    async def run_stage(self, stage: str, case_id: str, worker: str = "worker", recovering: bool = False) -> None:
         case = await self.store.get_case(case_id)
         if not case or case.get("status") in FINAL_STATUSES:
             return
-        if case.get("estagio") != stage or case.get("status") != NA_FILA:
+        # a worker that crashed mid-stage gets its pending message back on restart;
+        # only then a case left PROCESSANDO by this same worker is resumed
+        resumed = (recovering and case.get("estagio") == stage and case.get("status") == PROCESSANDO
+                   and (case.get("etapas") or {}).get(stage, {}).get("worker") == worker)
+        if resumed:
+            await log.write(self.store, log.DEPURACAO, f"Estágio {stage} retomado após queda do worker {worker}.",
+                            case_id=case_id, colaborador_id=case.get("colaborador_id"), estagio=stage)
+        elif case.get("estagio") != stage or case.get("status") != NA_FILA:
             # stale message: the case moved on, waits for someone, or is being handled elsewhere
             return
         if await self.should_hold(case, stage):

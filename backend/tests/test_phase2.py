@@ -69,3 +69,13 @@ def test_stats_are_exact():
 
 def test_strip_emoji():
     assert strip_emoji("Pronto \U0001F680 ok ✅") == "Pronto  ok "
+
+
+def test_receipts_feed_operation_facts():
+    case = _case("c9", "FALHOU_COMPENSADO")
+    case["execucao"] = {"recibos": [{"operacao": "ALTERAR_CARGO", "status": "COMPENSADA"},
+                                    {"operacao": "ALTERAR_BENEFICIO", "status": "FALHOU", "erro": "falha simulada"}]}
+    f = case_fact(case)
+    assert f["operacoes_executadas"] == ["ALTERAR_CARGO"] and f["operacoes_falhas"] == ["ALTERAR_BENEFICIO"] and f["compensado"]
+    text, _ = case_document(case)
+    assert "ALTERAR_BENEFICIO: FALHOU falha simulada" in text

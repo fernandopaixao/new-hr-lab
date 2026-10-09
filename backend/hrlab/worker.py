@@ -25,13 +25,15 @@ class Worker:
     def __init__(self, store: Store, name: str | None = None):
         self.store = store
         self.pipeline = Pipeline(store)
-        self.name = name or f"{socket.gethostname()}-{os.getpid()}"
+        # a stable name lets a restarted worker take back its pending messages
+        self.name = name or os.getenv("WORKER_NAME") or f"{socket.gethostname()}-{os.getpid()}"
         self.stopping = False
 
     async def stage_loop(self, stage: str) -> None:
         sem = asyncio.Semaphore(STAGE_CONCURRENCY)
         key = stream_key(stage)
         # first deliver messages left pending by a crashed consumer of this name
+        # (ids after `last_id`), then switch to new messages (">")
         last_id = "0"
         while not self.stopping:
             try:
@@ -50,18 +52,21 @@ class Worker:
                 if not messages:
                     last_id = ">"
                     continue
+                recovering = last_id != ">"
+                if recovering:
+                    last_id = messages[-1][0]
                 for msg_id, fields in messages:
                     await sem.acquire()
-                    asyncio.create_task(self._handle(stage, msg_id, fields, sem))
+                    asyncio.create_task(self._handle(stage, msg_id, fields, sem, recovering))
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001
                 log.exception("erro no loop do estágio %s: %s", stage, exc)
                 await asyncio.sleep(1)
 
-    async def _handle(self, stage: str, msg_id: str, fields: dict, sem: asyncio.Semaphore) -> None:
+    async def _handle(self, stage: str, msg_id: str, fields: dict, sem: asyncio.Semaphore, recovering: bool = False) -> None:
         try:
-            await self.pipeline.run_stage(stage, fields.get("case_id", ""), worker=self.name)
+            await self.pipeline.run_stage(stage, fields.get("case_id", ""), worker=self.name, recovering=recovering)
         except Exception:  # noqa: BLE001
             log.exception("falha ao processar %s em %s", fields, stage)
         finally:

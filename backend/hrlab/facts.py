@@ -113,7 +113,7 @@ def case_fact(case: dict, approvals: dict[str, dict] | None = None, employee: di
         "regras_falhas": regras_falhas,
         "operacoes": [o.get("operacao") for o in plano.get("operacoes") or []],
         "operacoes_descartadas": [o.get("operacao") for o in plano.get("descartadas") or []],
-        "operacoes_executadas": [r.get("operacao") for r in recibos if r.get("status") == "OK"],
+        "operacoes_executadas": [r.get("operacao") for r in recibos if r.get("status") in ("EXECUTADA", "COMPENSADA")],
         "operacoes_falhas": [r.get("operacao") for r in recibos if r.get("status") == "FALHOU"],
         "compensado": case.get("status") == "FALHOU_COMPENSADO" or any(r.get("status") == "COMPENSADA" for r in recibos),
         "replanejamentos": _int(case.get("replanejamentos"), 0),
@@ -228,7 +228,7 @@ def case_document(case: dict, approvals: dict[str, dict] | None = None, employee
             lines.append(f"{label}: recomenda {a.get('recomendacao')} (confiança {a.get('confianca')}). {a.get('resumo') or ''} "
                          f"{('Achados: ' + achados) if achados else ''}".strip())
     for r in (case.get("execucao") or {}).get("recibos") or []:
-        if r.get("status") != "OK":
+        if r.get("status") != "EXECUTADA":
             lines.append(f"Execução de {r.get('operacao')}: {r.get('status')} {r.get('erro') or ''}".strip())
     for a in f["aprovacoes"]:
         if a.get("persona"):

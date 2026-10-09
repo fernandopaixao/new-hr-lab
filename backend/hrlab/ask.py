@@ -205,7 +205,12 @@ def stats_for(query: dict, facts: list[dict]) -> dict:
     out: dict[str, Any] = {"total_casos_no_laboratorio": len(facts), "casos_que_atendem_aos_filtros": len(sel),
                            "filtros_aplicados": query["filtros"], "por_status": group_count(sel, "status", 12)}
     if query["agrupar_por"]:
-        out["agrupamento"] = {"campo": query["agrupar_por"], "linhas": group_count(sel, query["agrupar_por"], 20)}
+        linhas = group_count(sel, query["agrupar_por"], 20)
+        if query["agrupar_por"] == "regra_falha":
+            desc = {r["id"]: f"{r['id']}: {r['descricao']} ({r['tipo']})" for f in sel for r in f["regras_falhas"]}
+            for row in linhas:
+                row["rotulo"] = desc.get(row["valor"], row["valor"])
+        out["agrupamento"] = {"campo": query["agrupar_por"], "linhas": linhas}
     if query["intencao"] == "DESEMPENHO":
         lead = [f["lead_time_ms"] for f in sel if f["lead_time_ms"]]
         out["tempo_total_ms"] = {"p50": percentile(lead, 50), "p95": percentile(lead, 95)}

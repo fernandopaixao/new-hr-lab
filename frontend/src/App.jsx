@@ -12,6 +12,7 @@ import Logs from './pages/Logs.jsx'
 import Settings from './pages/Settings.jsx'
 import Insights from './pages/Insights.jsx'
 import Ask from './pages/Ask.jsx'
+import Setup from './pages/Setup.jsx'
 
 const PAGES = [
   ['linha', 'Linha'],
@@ -36,6 +37,8 @@ export default function App() {
   const [toast, toasts] = useToasts()
   const listeners = useRef(new Set())
   const [tick, setTick] = useState(0)
+  // null: unknown yet; 'primeira': first run; 'reaberto': opened from Configurações
+  const [setup, setSetup] = useState(null)
 
   const loadCases = useCallback(async () => {
     const list = await api.get('/cases?limit=400')
@@ -50,6 +53,7 @@ export default function App() {
 
   useEffect(() => {
     api.get('/meta').then(setMeta).catch((e) => toast(`Falha ao carregar: ${e.message}`, 'bad'))
+    api.get('/setup').then((r) => setSetup(r.estado?.concluido ? false : 'primeira')).catch(() => setSetup(false))
     loadCases()
     loadStats()
     const unsub = subscribe((msg) => {
@@ -75,9 +79,12 @@ export default function App() {
 
   const ctx = useMemo(() => ({
     meta, persona, setPersona, cases, stats, toast, onLive, openCase: setOpenCase, go: setPage, reloadCases: loadCases, reloadStats: loadStats, tick,
+    openSetup: () => setSetup('reaberto'),
   }), [meta, persona, cases, stats, toast, onLive, loadCases, loadStats, tick])
 
-  if (!meta) return <div className="empty">Carregando laboratório...</div>
+  if (!meta || setup === null) return <div className="empty">Carregando laboratório...</div>
+  const closeSetup = () => { setSetup(false); loadStats() }
+  if (setup === 'primeira') return <AppCtx.Provider value={ctx}><Setup onDone={closeSetup} />{toasts}</AppCtx.Provider>
   const pending = stats?.aprovacoes_pendentes || 0
   const health = stats?.agente?.saude
   const paused = stats?.controle?.paused
@@ -105,7 +112,7 @@ export default function App() {
             ))}
           </nav>
           <div className="spacer" />
-          <span title={health?.ok ? `Agente: ${health.modelo}` : (health?.erro || '')}>
+          <span title={health?.ok ? `Agente: ${health.provedor_nome || 'Ollama'}, ${health.modelo}` : (health?.erro || '')}>
             {health?.ok ? <Badge tone="ok">IA ok</Badge>
               : <Badge tone="warn">IA indisponível</Badge>}
           </span>
@@ -129,6 +136,7 @@ export default function App() {
           {page === 'config' && <Settings />}
         </main>
         {openCase ? <CaseDetail id={openCase} onClose={() => setOpenCase(null)} /> : null}
+        {setup === 'reaberto' ? <Setup onDone={() => { closeSetup(); toast('Configuração salva e registrada no log') }} onCancel={() => setSetup(false)} /> : null}
         {toasts}
       </div>
     </AppCtx.Provider>

@@ -36,7 +36,7 @@ O laboratório trata cada operação de RH como um **evento** que percorre uma *
 | Contrato de cargo | Estado alvo de quem ocupa o cargo (jornada, faixa, verbas, benefícios, acessos, equipamentos, cláusulas), regras de entrada e compliance permanente. | `seeds/contracts/cargos.yaml` |
 | Contrato de processo | Para um tipo de evento: esquema, elegibilidade, orquestração e auditoria (regras do plano e verificações do contrato de serviço). | `seeds/contracts/processos.yaml` |
 | Prateleira | Catálogo de operações desacopladas, parametrizáveis e compensáveis. | `backend/hrlab/shelf.py` |
-| Agente de conferência | Modelo de linguagem local (Ollama) que audita o plano e a execução e recomenda APROVADO ou REPROVADO. | `backend/hrlab/agent.py` |
+| Agente de conferência | Modelo de linguagem (Ollama local por padrão, ou Claude, OpenAI ou Gemini na nuvem) que audita o plano e a execução e recomenda APROVADO ou REPROVADO. | `backend/hrlab/agent.py` |
 | Aprovação | Decisão humana de uma persona sobre uma exceção ou uma revisão, sempre com justificativa. | Tela Aprovações |
 | Log de decisões | Registro append-only de cada regra, escolha, execução, compensação, recomendação e aprovação, com explicação. | Tela Log, `audit-log.jsonl` |
 

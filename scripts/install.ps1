@@ -3,8 +3,10 @@
   Instalador do laboratorio Novo RH para Windows (Docker Desktop).
 
 .DESCRIPTION
-  Verifica os pre-requisitos, escolhe onde esta o Ollama, grava o .env,
-  baixa os modelos, sobe o Docker Compose e confere se a API enxerga o Ollama.
+  Verifica os pre-requisitos, escolhe onde esta o Ollama (ou se a IA fica na
+  nuvem), grava o .env, baixa os modelos, sobe o Docker Compose e confere se a
+  API enxerga a IA. Na primeira vez, a interface abre o assistente de
+  configuracao inicial, onde se escolhe o provedor de IA e a chave de API.
   Funciona no Windows PowerShell 5.1 e no PowerShell 7.
 
 .EXAMPLE
@@ -21,8 +23,8 @@
 #>
 [CmdletBinding()]
 param(
-  # auto (padrao), local, rede, container ou nenhum
-  [ValidateSet('auto', 'local', 'rede', 'container', 'nenhum')]
+  # auto (padrao), local, rede, container, nuvem (Claude, OpenAI ou Gemini, escolhido no assistente) ou nenhum
+  [ValidateSet('auto', 'local', 'rede', 'container', 'nuvem', 'nenhum')]
   [string]$Ollama = 'auto',
   # URL do Ollama na rede, ex.: http://192.168.0.10:11434
   [string]$OllamaUrl = '',
@@ -242,12 +244,14 @@ if ($Ollama -eq 'auto') {
     Info 'Escolha como o laboratorio vai usar a IA:'
     Info '  1) Ollama em container, em CPU (baixa cerca de 5 GB) (recomendado)'
     Info '  2) Ollama em outra maquina da rede'
-    Info '  3) Sem Ollama, com o agente simulado'
+    Info '  3) IA na nuvem (Claude, OpenAI ou Gemini), escolhida no assistente da interface'
+    Info '  4) Sem IA, com o agente simulado'
     switch (Ask 'Opcao' '1') {
       '1' { $Ollama = 'container' }
       '2' { $Ollama = 'rede'; $OllamaUrl = Ask 'URL do Ollama (ex.: http://192.168.0.10:11434)' ''
             if (-not $OllamaUrl) { Fail 'URL do Ollama nao informada' } }
-      '3' { $Ollama = 'nenhum' }
+      '3' { $Ollama = 'nuvem' }
+      '4' { $Ollama = 'nenhum' }
       default { Fail 'opcao invalida' }
     }
   }
@@ -285,6 +289,12 @@ switch ($Ollama) {
     $hostUrl = "http://localhost:$PortaOllama"
     if ($memGb -gt 0 -and $memGb -lt 8) { Warn "Com $memGb GB de memoria, o $Modelo pode ficar lento ou nao carregar. Considere -Modelo qwen2.5:3b." }
     Ok "Modo: Ollama em container, em CPU (porta $PortaOllama na maquina)"
+  }
+  'nuvem' {
+    $hostUrl = ''
+    $containerUrl = Get-EnvValue 'OLLAMA_BASE_URL'; if (-not $containerUrl) { $containerUrl = 'http://host.docker.internal:11434' }
+    $SemModelos = $true
+    Ok 'Modo: IA na nuvem; escolha o provedor e informe a chave no assistente da interface'
   }
   'nenhum' {
     $hostUrl = ''
@@ -389,6 +399,12 @@ $check = $null
 try { $check = Invoke-RestMethod -Method Post -Uri "$api/agent/check" -TimeoutSec 15 @Net } catch { }
 if ($Ollama -eq 'nenhum') {
   Info 'Sem Ollama: o agente simulado responde no lugar e o indexador usa embeddings simulados.'
+} elseif ($Ollama -eq 'nuvem') {
+  if ($check -and $check.ok) { Ok 'A API alcanca o provedor de IA configurado' }
+  else {
+    Info 'Abra a interface: o assistente de configuracao pede o provedor (Claude, OpenAI ou Gemini), o modelo e a chave de API.'
+    Info 'Ate la, os casos aguardam a IA.'
+  }
 } elseif ($check -and $check.ok) {
   Ok "A API alcanca o Ollama em $containerUrl e o modelo $Modelo esta pronto"
   if (-not $check.modelo_embedding_disponivel) { Warn "O modelo de embedding $Embedding ainda nao esta no Ollama; a busca semantica espera por ele." }
@@ -401,9 +417,14 @@ if ($Ollama -eq 'nenhum') {
 }
 
 # --------------------------------------------------------------- resumo
+$setupDone = $false
+try { $setupDone = [bool](Invoke-RestMethod -Uri "$api/setup" -TimeoutSec 10 @Net).estado.concluido } catch { }
 Step 'Pronto'
 Info "Interface:        http://localhost:$Porta"
-if ($Ollama -eq 'nenhum') { Info 'Ollama:           nenhum (agente simulado)' } else { Info "Ollama:           $Ollama ($containerUrl)" }
+if ($setupDone) { Info 'Configuracao:     ja feita; para refazer, Configuracoes, Abrir assistente de configuracao' }
+else { Info 'Configuracao:     abra a interface: o assistente de configuracao inicial aparece na primeira visita' }
+if ($Ollama -eq 'nenhum') { Info 'Ollama:           nenhum (agente simulado)' }
+elseif ($Ollama -eq 'nuvem') { Info 'Ollama:           nenhum (IA na nuvem, definida no assistente)' } else { Info "Ollama:           $Ollama ($containerUrl)" }
 Info "Modelos:          $Modelo e $Embedding"
 Info "Workers:          $Workers"
 Info "Agente simulado:  $fallback"

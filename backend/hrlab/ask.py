@@ -12,7 +12,7 @@ Answering happens in three steps, all recorded in the answer for debugging:
 3. Answer: the model writes the answer only from that evidence and cites the
    cases it used; citations are validated against what was retrieved.
 
-When Ollama is unavailable the agent refuses, unless the simulated fallback is
+When the LLM is unavailable the agent refuses, unless the simulated fallback is
 enabled: then a keyword interpreter and a template answer are used, and the
 answer is marked as simulated.
 """
@@ -25,7 +25,8 @@ import unicodedata
 from typing import Any
 
 from . import embeddings as emb
-from .agent import AgentUnavailable, chat_json
+from . import llm
+from .llm import AgentUnavailable, chat_json
 from .domain import PERSONAS, STAGE_KEYS, STATUS_LABELS
 from .facts import FILTER_FIELDS, GROUP_FIELDS, apply_filters, group_count, percentile
 from .store import P, Store, dumps, now_ms
@@ -264,7 +265,8 @@ def heuristic_answer(question: str, query: dict, stats: dict, docs: list[dict]) 
 async def answer(store: Store, question: str, facts: list[dict], event_types: list[dict], persona: str = "") -> dict:
     settings = await store.settings()
     started = time.time()
-    model = settings.get("ask_model") or settings["ollama_model"]
+    prov = llm.provider(settings)
+    model = settings.get("ask_model") or llm.active_model(settings)
     cat = catalog(facts, event_types)
     trace: dict[str, Any] = {"pergunta": question}
     simulated = False
@@ -272,9 +274,9 @@ async def answer(store: Store, question: str, facts: list[dict], event_types: li
     # 1. interpretation
     try:
         prompt = f"Catálogo:\n{dumps(cat)}\n\nPergunta: {question}"
-        parsed, meta = await chat_json(settings, ROUTER_SYSTEM, prompt, ROUTER_SCHEMA, model=model, num_predict=300)
+        parsed, meta = await chat_json(settings, ROUTER_SYSTEM, prompt, ROUTER_SCHEMA, model=model, max_tokens=300)
         query = sanitize_query(parsed)
-        trace["interpretacao"] = {"agente": "ollama", "modelo": model, "duracao_ms": meta["duracao_ms"], "bruta": meta["resposta_bruta"]}
+        trace["interpretacao"] = {"agente": prov, "modelo": model, "duracao_ms": meta["duracao_ms"], "bruta": meta["resposta_bruta"]}
     except (AgentUnavailable, json.JSONDecodeError) as exc:
         if isinstance(exc, AgentUnavailable) and not settings.get("heuristic_fallback_enabled"):
             raise
@@ -314,10 +316,10 @@ async def answer(store: Store, question: str, facts: list[dict], event_types: li
     else:
         try:
             prompt = f"Pergunta: {question}\n\nEvidências:\n{dumps(evidence)}"
-            parsed, meta = await chat_json(settings, ANSWER_SYSTEM, prompt, ANSWER_SCHEMA, model=model, num_predict=700)
+            parsed, meta = await chat_json(settings, ANSWER_SYSTEM, prompt, ANSWER_SCHEMA, model=model, max_tokens=700)
             result = {"resposta": str(parsed.get("resposta") or ""), "casos_citados": [str(c) for c in parsed.get("casos_citados") or []],
                       "confianca": parsed.get("confianca"), "limitacoes": str(parsed.get("limitacoes") or "")}
-            trace["resposta"] = {"agente": "ollama", "modelo": model, "duracao_ms": meta["duracao_ms"], "bruta": meta["resposta_bruta"]}
+            trace["resposta"] = {"agente": prov, "modelo": model, "duracao_ms": meta["duracao_ms"], "bruta": meta["resposta_bruta"]}
         except (AgentUnavailable, json.JSONDecodeError) as exc:
             if isinstance(exc, AgentUnavailable) and not settings.get("heuristic_fallback_enabled"):
                 raise

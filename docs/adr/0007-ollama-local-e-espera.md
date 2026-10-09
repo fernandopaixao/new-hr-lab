@@ -17,7 +17,7 @@ O agente de conferência deve usar IA e ser otimizado para trabalhar com Ollama,
 
 ## Alternativas consideradas
 
-- **APIs de IA na nuvem.** Os dados de RH sairiam do ambiente, o que vai contra o pedido.
+- **APIs de IA na nuvem.** Os dados de RH sairiam do ambiente, o que vai contra o pedido. Revista depois a pedido do usuário: a ADR [0021](0021-provedores-de-llm-na-nuvem.md) permite provedores na nuvem ao lado do Ollama, que continua o padrão.
 - **Fallback automático para heurística.** Esconde que a IA não participou da decisão. Por isso o fallback só existe quando é ligado explicitamente.
 
 ## Consequências

@@ -7,10 +7,12 @@ version changes. For the volumes of a lab (tens of thousands of documents) an
 exact scan is fast enough and avoids another moving part; the docs explain the
 path to a dedicated vector store.
 
-Embedding model: Ollama `/api/embed` (default `nomic-embed-text`). When Ollama
-is unreachable the indexer waits, unless the simulated fallback is enabled in
-the settings: then a deterministic hashing embedding is used and every document
-indexed that way is marked and re-embedded when Ollama returns.
+Embedding model: Ollama `/api/embed` (default `nomic-embed-text`), OpenAI or
+Gemini (see llm.py). When the provider is unreachable the indexer waits, unless
+the simulated fallback is enabled in the settings: then a deterministic hashing
+embedding is used and every document indexed that way is marked and re-embedded
+when the provider returns. With the provider "simulado" the hashing model is the
+chosen model.
 """
 from __future__ import annotations
 
@@ -23,10 +25,10 @@ import unicodedata
 import zlib
 from typing import Any
 
-import httpx
 import numpy as np
 
-from .agent import AgentUnavailable
+from . import llm
+from .llm import AgentUnavailable
 from .store import P, Store, dumps, now_ms
 
 DOC_KEY = f"{P}:vec:doc:"
@@ -72,40 +74,13 @@ def hash_embed(text: str) -> list[float]:
     return [v / norm for v in vec]
 
 
-def _prefix(model: str, kind: str) -> str:
-    # nomic-embed-text was trained with task prefixes
-    if "nomic" in model:
-        return "search_query: " if kind == "query" else "search_document: "
-    return ""
-
-
-async def ollama_embed(settings: dict, texts: list[str], kind: str = "document") -> list[list[float]]:
-    model = settings["embedding_model"]
-    url = settings["ollama_base_url"].rstrip("/")
-    inputs = [_prefix(model, kind) + t for t in texts]
-    try:
-        async with httpx.AsyncClient(timeout=settings["ollama_timeout_s"]) as client:
-            resp = await client.post(f"{url}/api/embed", json={"model": model, "input": inputs, "keep_alive": settings["ollama_keep_alive"],
-                                                               "truncate": True})
-            if resp.status_code == 404 and "model" not in resp.text:
-                # older Ollama: one prompt per call
-                out = []
-                for t in inputs:
-                    r = await client.post(f"{url}/api/embeddings", json={"model": model, "prompt": t})
-                    r.raise_for_status()
-                    out.append(r.json()["embedding"])
-                return out
-            resp.raise_for_status()
-            return resp.json()["embeddings"]
-    except (httpx.HTTPError, OSError, KeyError) as exc:
-        raise AgentUnavailable(f"embeddings indisponíveis: {type(exc).__name__}: {exc}") from exc
-
-
 async def embed(store: Store, texts: list[str], kind: str = "document") -> tuple[list[list[float]], str]:
-    """Embeds with Ollama, or with the simulated hashing model when allowed."""
+    """Embeds with the configured provider, or with the simulated hashing model when chosen or allowed."""
     settings = await store.settings()
+    if llm.embedding_provider(settings) == "simulado":
+        return [hash_embed(t) for t in texts], HASH_MODEL
     try:
-        return await ollama_embed(settings, texts, kind), settings["embedding_model"]
+        return await llm.embed(settings, texts, kind), llm.embedding_model(settings)
     except AgentUnavailable:
         if settings.get("heuristic_fallback_enabled"):
             return [hash_embed(t) for t in texts], HASH_MODEL

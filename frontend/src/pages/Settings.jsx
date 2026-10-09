@@ -15,13 +15,28 @@ const FIELDS = [
   ['failure_rate_percent', 'Falhas injetadas por operação (%)', 'number', 'Simula sistemas instáveis para exercitar a saga.'],
 ]
 
+const CLOUD_FIELDS = {
+  anthropic: [['anthropic_model', 'Modelo', 'text'], ['anthropic_effort', 'Esforço de raciocínio', 'text']],
+  openai: [['openai_model', 'Modelo', 'text'], ['openai_base_url', 'URL base (OpenAI ou compatível)', 'text']],
+  gemini: [['gemini_model', 'Modelo', 'text']],
+}
+const EMB_MODEL_KEY = { ollama: 'embedding_model', openai: 'openai_embedding_model', gemini: 'gemini_embedding_model' }
+
 export default function Settings() {
-  const { toast, stats, reloadStats } = useApp()
+  const { toast, stats, reloadStats, openSetup } = useApp()
   const [vals, setVals] = useState(null)
   const [health, setHealth] = useState(null)
+  const [setup, setSetup] = useState(null)
   const [busy, setBusy] = useState(false)
-  useEffect(() => { api.get('/settings').then((r) => setVals(r.valores)); api.get('/agent/health').then(setHealth) }, [])
-  if (!vals) return null
+  useEffect(() => {
+    api.get('/settings').then((r) => setVals(r.valores))
+    api.get('/agent/health').then(setHealth)
+    api.get('/setup').then(setSetup)
+  }, [stats?.agente?.saude?.provedor])
+  if (!vals || !setup) return null
+  const prov = vals.llm_provider
+  const provs = setup.provedores
+  const key = setup.chaves[prov]
   const set = (k, v) => setVals({ ...vals, [k]: v })
   const save = async () => {
     try { setVals((await api.put('/settings', vals)).valores); toast('Configurações salvas e registradas no log') } catch (e) { toast(e.message, 'bad') }
@@ -33,18 +48,43 @@ export default function Settings() {
   }
   return (
     <div>
-      <div className="page-head"><div><h2>Configurações</h2><p>Parâmetros do agente de IA (Ollama) e do comportamento da linha. Alterações valem na hora e ficam no log.</p></div></div>
+      <div className="page-head"><div><h2>Configurações</h2><p>Parâmetros do agente de IA e do comportamento da linha. Alterações valem na hora e ficam no log.</p></div>
+        <button className="btn right" onClick={openSetup}>Abrir assistente de configuração</button></div>
       <div className="grid2">
         <div className="panel panel-pad col">
-          <h3>Agente de conferência</h3>
+          <h3>Provedor de IA</h3>
+          <div className="form-grid">
+            <label className="field">Provedor dos agentes
+              <select value={prov} onChange={(e) => set('llm_provider', e.target.value)}>
+                {Object.entries(provs).map(([k, p]) => <option key={k} value={k}>{p.nome}</option>)}
+              </select>
+            </label>
+            {(CLOUD_FIELDS[prov] || []).map(([k, label, type]) => (
+              <label key={k} className="field">{label}{k === 'anthropic_effort'
+                ? <select value={vals[k]} onChange={(e) => set(k, e.target.value)}>{['low', 'medium', 'high', 'xhigh', 'max'].map((x) => <option key={x} value={x}>{x}</option>)}</select>
+                : <input type={type} value={vals[k]} list={k.endsWith('_model') ? 'cfg-models' : undefined} onChange={(e) => set(k, e.target.value)} />}</label>
+            ))}
+            {prov !== 'ollama' ? <>
+              <label className="field" title="Tempo limite de cada chamada ao provedor na nuvem.">Tempo limite (s)<input type="number" value={vals.cloud_timeout_s} onChange={(e) => set('cloud_timeout_s', Number(e.target.value))} /></label>
+              <label className="field" title="Chamadas simultâneas por worker ao provedor na nuvem.">Chamadas simultâneas<input type="number" value={vals.cloud_max_concurrency} onChange={(e) => set('cloud_max_concurrency', Number(e.target.value))} /></label>
+              <label className="field" title="Máximo de tokens por resposta, incluindo o raciocínio do modelo.">Máximo de tokens<input type="number" value={vals.cloud_max_tokens} onChange={(e) => set('cloud_max_tokens', Number(e.target.value))} /></label>
+            </> : null}
+            <datalist id="cfg-models">{(provs[prov]?.modelos || []).map((m) => <option key={m} value={m} />)}</datalist>
+          </div>
+          {provs[prov]?.chave ? (
+            <div className="small">{key?.configurada
+              ? <Badge tone="ok">chave de API salva{key.final ? `, termina em ${key.final}` : ''} ({key.origem})</Badge>
+              : <Badge tone="bad">sem chave de API</Badge>} Para trocar a chave, use o assistente de configuração.</div>
+          ) : null}
+          <h3 className="mt">Ollama</h3>
           <div className="form-grid">
             {FIELDS.slice(0, 8).map(([k, label, type, help]) => (
               <label key={k} className="field" title={help}>{label}<input type={type} value={vals[k]} onChange={(e) => set(k, type === 'number' ? Number(e.target.value) : e.target.value)} /></label>
             ))}
           </div>
           <label className="check"><input type="checkbox" checked={vals.heuristic_fallback_enabled} onChange={(e) => set('heuristic_fallback_enabled', e.target.checked)} />
-            Usar agente simulado (heurístico) quando o Ollama estiver indisponível</label>
-          <div className="small muted">Desligado (padrão): os casos param em "Aguardando agente de IA" e são retomados sozinhos quando o Ollama volta. Ligado: um agente heurístico responde, marcado como simulado em cada decisão.</div>
+            Usar agente simulado (heurístico) quando a IA estiver indisponível</label>
+          <div className="small muted">Desligado (padrão): os casos param em "Aguardando agente de IA" e são retomados sozinhos quando a IA volta. Ligado: um agente heurístico responde, marcado como simulado em cada decisão.</div>
           <label className="check"><input type="checkbox" checked={vals.agent_cache_enabled} onChange={(e) => set('agent_cache_enabled', e.target.checked)} /> Reaproveitar respostas idênticas (cache)</label>
           <label className="field">Revisão humana
             <select value={vals.human_review_mode} onChange={(e) => set('human_review_mode', e.target.value)}>
@@ -54,10 +94,16 @@ export default function Settings() {
           </label>
           <h3 className="mt">Embeddings e perguntas</h3>
           <div className="form-grid">
-            <label className="field" title="Modelo do Ollama que gera os embeddings dos eventos. Trocar o modelo reindexa tudo.">Modelo de embedding
-              <input value={vals.embedding_model} onChange={(e) => set('embedding_model', e.target.value)} /></label>
-            <label className="field" title="Vazio usa o mesmo modelo do agente de conferência.">Modelo do agente de perguntas
-              <input value={vals.ask_model} placeholder={vals.ollama_model} onChange={(e) => set('ask_model', e.target.value)} /></label>
+            <label className="field" title="Quem gera os embeddings dos eventos. Trocar reindexa tudo.">Gerador de embeddings
+              <select value={vals.embedding_provider} onChange={(e) => set('embedding_provider', e.target.value)}>
+                {Object.entries(setup.provedores_embedding).map(([k, p]) => <option key={k} value={k}>{p.nome}</option>)}
+              </select></label>
+            {EMB_MODEL_KEY[vals.embedding_provider] ? (
+              <label className="field" title="Trocar o modelo reindexa tudo.">Modelo de embedding
+                <input value={vals[EMB_MODEL_KEY[vals.embedding_provider]]} onChange={(e) => set(EMB_MODEL_KEY[vals.embedding_provider], e.target.value)} /></label>
+            ) : null}
+            <label className="field" title="Vazio usa o mesmo modelo do agente de conferência, no mesmo provedor.">Modelo do agente de perguntas
+              <input value={vals.ask_model} placeholder={vals[{ ollama: 'ollama_model', anthropic: 'anthropic_model', openai: 'openai_model', gemini: 'gemini_model' }[prov]]} onChange={(e) => set('ask_model', e.target.value)} /></label>
             <label className="field" title="Quantos eventos parecidos entram como evidência em cada resposta.">Documentos por resposta
               <input type="number" value={vals.ask_top_k} onChange={(e) => set('ask_top_k', Number(e.target.value))} /></label>
           </div>
@@ -66,19 +112,21 @@ export default function Settings() {
         </div>
         <div className="col">
           <div className="panel panel-pad col">
-            <div className="row"><h3>Saúde do Ollama</h3><span className="right">{health?.ok ? <Badge tone="ok">disponível</Badge> : <Badge tone="bad">indisponível</Badge>}</span></div>
+            <div className="row"><h3>Saúde da IA</h3><span className="right">{health?.ok ? <Badge tone="ok">disponível</Badge> : <Badge tone="bad">indisponível</Badge>}</span></div>
             <dl className="kv">
-              <dt>URL</dt><dd className="mono">{health?.url}</dd>
-              <dt>Modelo</dt><dd>{health?.modelo} {health?.modelo_disponivel ? <Badge tone="ok">instalado</Badge> : <Badge tone="warn">não instalado</Badge>}</dd>
-              <dt>Embedding</dt><dd>{health?.modelo_embedding} {health?.modelo_embedding_disponivel ? <Badge tone="ok">instalado</Badge> : <Badge tone="warn">não instalado</Badge>}</dd>
-              <dt>Modelos no servidor</dt><dd className="small">{(health?.modelos || []).join(', ') || '-'}</dd>
+              <dt>Provedor</dt><dd>{health?.provedor_nome || provs[prov]?.nome}</dd>
+              {health?.url ? <><dt>URL</dt><dd className="mono">{health.url}</dd></> : null}
+              <dt>Modelo</dt><dd>{health?.modelo} {health?.modelo_disponivel ? <Badge tone="ok">disponível</Badge> : <Badge tone="warn">indisponível</Badge>}</dd>
+              <dt>Embedding</dt><dd>{health?.modelo_embedding} {health?.provedor_embedding === 'simulado' ? <Badge tone="warn">simulado</Badge> : health?.modelo_embedding_disponivel ? <Badge tone="ok">disponível</Badge> : <Badge tone="warn">indisponível</Badge>}</dd>
+              {health?.erro_embedding ? <><dt>Erro embedding</dt><dd className="small" style={{ color: 'var(--bad)' }}>{health.erro_embedding}</dd></> : null}
+              <dt>Modelos disponíveis</dt><dd className="small" style={{ maxHeight: 90, overflow: 'auto' }}>{(health?.modelos || []).join(', ') || '-'}</dd>
               <dt>Verificado</dt><dd>{dateTime(health?.verificado_em)}</dd>
               {health?.erro ? <><dt>Erro</dt><dd className="small" style={{ color: 'var(--bad)' }}>{health.erro}</dd></> : null}
             </dl>
             <div className="row">
               <button className="btn" onClick={check}>Verificar agora</button>
-              <button className="btn" onClick={() => pull()} disabled={busy}>{busy ? 'Baixando...' : 'Baixar modelo do agente'}</button>
-              <button className="btn" onClick={() => pull(vals.embedding_model)} disabled={busy}>Baixar modelo de embedding</button>
+              {prov === 'ollama' ? <button className="btn" onClick={() => pull()} disabled={busy}>{busy ? 'Baixando...' : 'Baixar modelo do agente'}</button> : null}
+              {vals.embedding_provider === 'ollama' ? <button className="btn" onClick={() => pull(vals.embedding_model)} disabled={busy}>Baixar modelo de embedding</button> : null}
               <button className="btn" onClick={async () => { const r = await api.post('/agent/cache/clear'); toast(`${r.removidos} respostas removidas do cache`) }}>Limpar cache</button>
             </div>
             <div className="small muted">Estatísticas: {stats?.agente?.chamadas || 0} chamadas, média {stats?.agente?.duracao_media_ms ?? '-'} ms, recomendações {JSON.stringify(stats?.agente?.recomendacoes || {})}.</div>

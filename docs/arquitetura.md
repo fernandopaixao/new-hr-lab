@@ -11,9 +11,9 @@
                      +-------+-------+
                              |
                      +-------v-------+          +------------------+
-                     |      api      |--------->|      Ollama      |  local, na rede ou container
-                     |   FastAPI     |          |  qwen2.5:7b      |  (perguntas, embedding da busca)
-                     +-------+-------+          |  nomic-embed-text|
+                     |      api      |--------->|  IA: Ollama ou   |  Ollama local, na rede ou container;
+                     |   FastAPI     |          |  Claude, OpenAI, |  ou um provedor na nuvem
+                     +-------+-------+          |  Gemini          |  (perguntas, embedding da busca)
                              |                  +--------^---------+
                              |                           |
 +----------------------------v---------------------------+-----------------+
@@ -24,7 +24,7 @@
 +---------v---------+                           +---------v---------+
 |   worker (N)      |-------------------------->|     indexer       |
 | um loop por       |   agente de conferência   | embeddings de     |
-| estágio da linha  |   (Ollama)                | todos os eventos  |
+| estágio da linha  |   (provedor de IA)        | todos os eventos  |
 +-------------------+                           +-------------------+
 ```
 
@@ -35,7 +35,7 @@
 | `worker` | Consome as filas dos seis estágios e executa a lógica de cada um, inclusive chamadas ao agente de conferência. | `docker compose up --scale worker=N` |
 | `indexer` | Lê o log de decisões e mantém os embeddings dos casos e das decisões. | 1 |
 | `redis` | Filas, armazenamento, pub/sub e índice vetorial, com AOF ligado. | 1 |
-| `ollama` | Opcional (perfil `ollama`). Em geral o Ollama roda na máquina do usuário ou num servidor da rede. | - |
+| `ollama` | Opcional (perfil `ollama`). Em geral o Ollama roda na máquina do usuário ou num servidor da rede; com um provedor na nuvem, não é necessário. | - |
 
 ## Módulos do backend
 
@@ -48,12 +48,14 @@
 | `contracts.py` | Repositório de contratos: semente, versões, vigência, validação, YAML. | `store`, `expr` |
 | `shelf.py` | Prateleira: operações, parâmetros, campos alterados, aplicação e compensação. | - |
 | `engine.py` | Lógica pura da linha: regras, elegibilidade, estado alvo, plano, auditoria antes da execução, conferência final, conformidade. | `context`, `shelf`, `expr` |
-| `agent.py` | Agente de conferência e chamadas estruturadas ao Ollama. | `store` |
+| `llm.py` | Provedores de IA (Ollama, Claude, OpenAI e compatíveis, Gemini): chamada estruturada, lista de modelos, embeddings, saúde e teste de conexão. | `apikeys` |
+| `apikeys.py` | Chaves de API: ambiente primeiro, depois `secrets.json` no volume de dados. Nunca no Redis. | `config` |
+| `agent.py` | Agente de conferência sobre `llm.py`. | `store`, `llm` |
 | `pipeline.py` | Handlers dos estágios, aprovações, depuração, saga, concorrência e eventos coletivos. | todos acima |
 | `worker.py` | Loops de consumo das filas e monitor de saúde do agente. | `pipeline` |
 | `logbook.py` | Log append-only (stream, trilhas por caso e por colaborador, arquivo JSONL). | `store` |
 | `facts.py` | Modelo de leitura: fatos por caso, documentos narrativos e painel de visibilidade. | `domain` |
-| `embeddings.py` | Embeddings via Ollama, modo simulado, armazenamento e busca vetorial. | `store` |
+| `embeddings.py` | Embeddings pelo provedor escolhido, modo simulado, armazenamento e busca vetorial. | `store`, `llm` |
 | `indexer.py` | Serviço que mantém o índice em dia a partir do log. | `facts`, `embeddings` |
 | `ask.py` | Agente de linguagem natural: interpretação, consulta, resposta com citações. | `facts`, `embeddings`, `agent` |
 | `generators/` | Time artificial de banco e catálogo de cenários. | `contracts` (dados) |
@@ -86,8 +88,8 @@ A regra de dependência é simples: `engine.py`, `facts.py`, `shelf.py` e `expr.
 | `hr:lock:employee:{id}` | string com TTL | Trava por colaborador durante a execução. |
 | `hr:contract:{codigo}`, `hr:contracts` | JSON (lista de versões), set | Contratos versionados. |
 | `hr:approval:{id}`, `hr:approvals`, `hr:approvals:pending` | JSON, sorted set, set | Aprovações e pendências. |
-| `hr:settings`, `hr:control` | JSON | Configurações e controle da linha (pausas, breakpoints). |
-| `hr:agent:health`, `hr:agent:cache:*`, `hr:waiting_agent` | JSON, strings com TTL, hash | Saúde do Ollama, cache de respostas, casos aguardando o agente. |
+| `hr:settings`, `hr:control`, `hr:setup` | JSON | Configurações, controle da linha (pausas, breakpoints) e estado do assistente de configuração. As chaves de API não ficam no Redis. |
+| `hr:agent:health`, `hr:agent:cache:*`, `hr:waiting_agent` | JSON, strings com TTL, hash | Saúde do provedor de IA, cache de respostas, casos aguardando o agente. |
 | `hr:scenario_run:{id}`, `hr:scenario_runs` | JSON, lista | Execuções da suíte de cenários. |
 | `hr:vec:doc:{id}`, `hr:vec:ids`, `hr:vec:version` | hash, set, contador | Índice vetorial: texto, metadados, vetor, modelo. |
 | `hr:vec:dirty`, `hr:vec:simulated`, `hr:vec:status` | sorted set, set, JSON | Fila de reindexação, documentos com embedding simulado, estado do indexador. |
@@ -110,9 +112,9 @@ A regra de dependência é simples: `engine.py`, `facts.py`, `shelf.py` e `expr.
 | Operação falha na execução | Saga compensa as operações aplicadas, na ordem inversa, restaurando os campos que cada uma declarou alterar. Operações sem compensação (como uma notificação já enviada) ficam registradas para tratamento manual. Status `FALHOU_COMPENSADO`. |
 | Auditoria reprovada antes da execução | Nada foi alterado. Status `REJEITADO`. |
 | Conferência final reprovada e confirmada pela auditoria interna | A execução é revertida a partir dos snapshots. Status `REVERTIDO`. |
-| Ollama fora do ar | O caso para em `AGUARDANDO_AGENTE`; o monitor verifica a saúde a cada 10 segundos e recoloca os casos na fila quando o Ollama volta. Com o modo simulado ligado, um agente heurístico responde e a decisão fica marcada. |
-| Ollama responde fora do formato | Duas tentativas; depois o agente é tratado como REPROVADO e o caso vai para revisão humana. |
-| Indexador sem Ollama | Os eventos continuam marcados em `hr:vec:dirty` e são indexados quando o Ollama volta; com o modo simulado, recebem embedding simulado e são refeitos depois. |
+| IA fora do ar (Ollama parado, ou na nuvem: sem rede, chave recusada, modelo inexistente, cota estourada) | O caso para em `AGUARDANDO_AGENTE`; o monitor verifica a saúde a cada 10 segundos e recoloca os casos na fila quando a IA volta. Com o modo simulado ligado, um agente heurístico responde e a decisão fica marcada. |
+| IA responde fora do formato ou recusa | Duas tentativas; depois o agente é tratado como REPROVADO e o caso vai para revisão humana. |
+| Indexador sem IA | Os eventos continuam marcados em `hr:vec:dirty` e são indexados quando o gerador de embeddings volta; com o modo simulado, recebem embedding simulado e são refeitos depois. |
 | Erro inesperado num estágio | Status `ERRO` com a mensagem; o caso pode ser reprocessado a partir de qualquer estágio, com o evento editado se necessário. |
 | Worker cai no meio de um estágio | A mensagem fica pendente no grupo; quando o worker volta, ele retoma o estágio do caso que deixou em processamento. A guarda de obsolescência impede reprocessar estágios já concluídos. |
 

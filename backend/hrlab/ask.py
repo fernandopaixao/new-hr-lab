@@ -26,7 +26,7 @@ from typing import Any
 
 from . import embeddings as emb
 from .agent import AgentUnavailable, chat_json
-from .domain import PERSONAS, STATUS_LABELS
+from .domain import PERSONAS, STAGE_KEYS, STATUS_LABELS
 from .facts import FILTER_FIELDS, GROUP_FIELDS, apply_filters, group_count, percentile
 from .store import P, Store, dumps, now_ms
 
@@ -215,7 +215,7 @@ def stats_for(query: dict, facts: list[dict]) -> dict:
         lead = [f["lead_time_ms"] for f in sel if f["lead_time_ms"]]
         out["tempo_total_ms"] = {"p50": percentile(lead, 50), "p95": percentile(lead, 95)}
         per = {}
-        for s in ("intake", "eligibility", "planning", "plan_review", "execution", "audit"):
+        for s in STAGE_KEYS:
             vals = [f["etapas"][s]["duracao_ms"] for f in sel if f["etapas"][s]["duracao_ms"] is not None]
             per[s] = {"p50": percentile(vals, 50), "p95": percentile(vals, 95)}
         out["tempo_por_estagio_ms"] = per

@@ -49,7 +49,7 @@ export default function Settings() {
           <label className="field">Revisão humana
             <select value={vals.human_review_mode} onChange={(e) => set('human_review_mode', e.target.value)}>
               <option value="SE_REPROVADO">Somente quando o agente ou as regras reprovarem</option>
-              <option value="SEMPRE">Sempre (todo plano e toda auditoria passam por uma pessoa)</option>
+              <option value="SEMPRE">Sempre (toda auditoria e toda conferência final passam por uma pessoa)</option>
             </select>
           </label>
           <h3 className="mt">Embeddings e perguntas</h3>

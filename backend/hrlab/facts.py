@@ -20,6 +20,7 @@ from typing import Any, Iterable
 from .domain import ACTIVE_STATUSES, FINAL_STATUSES, PERSONAS, STAGE_KEYS, STAGES, STATUS_LABELS
 
 STAGE_NAMES = {k: n for k, n, _ in STAGES}
+AGENT_KEYS = ("agente_auditoria", "agente_conferencia")
 
 # Log kinds that become searchable documents on their own (the rest is already
 # part of the case narrative).
@@ -32,10 +33,10 @@ INDEXED_LOG_KINDS = {
 
 # Fields that the natural language agent may filter and group by.
 FILTER_FIELDS = ("evento_tipo", "status", "colaborador_id", "colaborador_nome", "cargo", "cargo_alvo", "uf", "unidade",
-                 "processo", "cenario", "estagio", "recomendacao_plano", "recomendacao_auditoria")
+                 "processo", "cenario", "estagio", "recomendacao_auditoria", "recomendacao_conferencia", "gestor_id")
 GROUP_FIELDS = ("status", "evento_tipo", "processo", "estagio", "cargo", "cargo_alvo", "uf", "unidade", "cenario",
-                "regra_falha", "operacao", "operacao_falha", "persona_aprovadora", "recomendacao_plano",
-                "recomendacao_auditoria", "dia", "hora")
+                "regra_falha", "operacao", "operacao_falha", "persona_aprovadora", "recomendacao_auditoria",
+                "recomendacao_conferencia", "gestor_id", "dia", "hora")
 
 
 def _int(v: Any, default: int | None = None) -> int | None:
@@ -71,7 +72,7 @@ def case_fact(case: dict, approvals: dict[str, dict] | None = None, employee: di
     aps = [approvals.get(a) or {"id": a} for a in case.get("aprovacoes") or [] if isinstance(a, str)]
     aps += [a for a in case.get("aprovacoes") or [] if isinstance(a, dict)]
     regras_falhas = []
-    for key in ("elegibilidade", "conferencia_plano", "auditoria"):
+    for key in ("elegibilidade", "auditoria", "conferencia_final"):
         for r in failed_rules(case.get(key)):
             regras_falhas.append({"id": r.get("id"), "tipo": r.get("tipo"), "secao": key, "descricao": r.get("descricao"),
                                   "explicacao": r.get("explicacao")})
@@ -90,6 +91,7 @@ def case_fact(case: dict, approvals: dict[str, dict] | None = None, employee: di
         "colaborador_nome": case.get("colaborador_nome") or emp.get("nome"),
         "cargo": emp.get("cargo") or (ev.get("dados") or {}).get("cargo"),
         "cargo_alvo": case.get("cargo_alvo"),
+        "gestor_id": emp.get("gestor_id"),
         "uf": emp.get("uf") or (ev.get("dados") or {}).get("uf"),
         "unidade": emp.get("unidade") or (ev.get("dados") or {}).get("unidade"),
         "cenario": case.get("cenario"),
@@ -103,12 +105,12 @@ def case_fact(case: dict, approvals: dict[str, dict] | None = None, employee: di
         "etapas": {s: {"status": (etapas.get(s) or {}).get("status"), "duracao_ms": _int((etapas.get(s) or {}).get("duracao_ms"))}
                    for s in STAGE_KEYS},
         "elegibilidade": (case.get("elegibilidade") or {}).get("decisao"),
-        "conferencia_plano": (case.get("conferencia_plano") or {}).get("decisao"),
         "auditoria": (case.get("auditoria") or {}).get("decisao"),
-        "recomendacao_plano": case.get("recomendacao_plano") or (case.get("agente_plano") or {}).get("recomendacao"),
+        "conferencia_final": (case.get("conferencia_final") or {}).get("decisao"),
         "recomendacao_auditoria": case.get("recomendacao_auditoria") or (case.get("agente_auditoria") or {}).get("recomendacao"),
-        "agente_simulado": any((case.get(k) or {}).get("agente") == "heuristico" for k in ("agente_plano", "agente_auditoria")),
-        "agente_ms": [m for m in (_int((case.get(k) or {}).get("duracao_ms")) for k in ("agente_plano", "agente_auditoria")
+        "recomendacao_conferencia": case.get("recomendacao_conferencia") or (case.get("agente_conferencia") or {}).get("recomendacao"),
+        "agente_simulado": any((case.get(k) or {}).get("agente") == "heuristico" for k in AGENT_KEYS),
+        "agente_ms": [m for m in (_int((case.get(k) or {}).get("duracao_ms")) for k in AGENT_KEYS
                                   if case.get(k) and not (case.get(k) or {}).get("cache")) if m is not None],
         "regras_falhas": regras_falhas,
         "operacoes": [o.get("operacao") for o in plano.get("operacoes") or []],
@@ -221,7 +223,7 @@ def case_document(case: dict, approvals: dict[str, dict] | None = None, employee
         lines.append(f"Operação {o.get('operacao')} em {o.get('sistema')}: {o.get('motivo')}")
     for o in (plano.get("descartadas") or [])[:10]:
         lines.append(f"Operação {o.get('operacao')} descartada: {o.get('motivo_descarte')}")
-    for k, label in (("agente_plano", "Agente na conferência do plano"), ("agente_auditoria", "Agente na auditoria")):
+    for k, label in (("agente_auditoria", "Agente na auditoria antes da execução"), ("agente_conferencia", "Agente na conferência final")):
         a = case.get(k)
         if a:
             achados = "; ".join(str(x.get("descricao")) for x in (a.get("achados") or [])[:5])
@@ -235,9 +237,9 @@ def case_document(case: dict, approvals: dict[str, dict] | None = None, employee
             lines.append(f"Aprovação {a['tipo']} {(a['status'] or '').lower()} por {a['persona']}: {a.get('justificativa') or ''}")
         else:
             lines.append(f"Aprovação {a['tipo']} {(a['status'] or 'pendente').lower()}, aguardando {', '.join(a['aprovadores'])}.")
-    au = case.get("auditoria") or {}
-    if au.get("resumo"):
-        lines.append(f"Auditoria: {au['resumo']}")
+    for k, label in (("auditoria", "Auditoria antes da execução"), ("conferencia_final", "Conferência final")):
+        if (case.get(k) or {}).get("decisao"):
+            lines.append(f"{label}: {case[k]['decisao']}.")
     if f["explicacao_final"]:
         lines.append(f"Decisão final: {f['explicacao_final']}")
     meta = {k: f.get(k) for k in ("id", "evento_tipo", "status", "colaborador_id", "colaborador_nome", "cargo", "cargo_alvo",
@@ -351,7 +353,7 @@ def insights(facts: list[dict], *, queues: dict | None = None, pending_approvals
     # agent vs rules agreement
     agreement = {"concordam": 0, "agente_mais_rigoroso": 0, "regras_mais_rigorosas": 0, "simulado": 0}
     for f in facts:
-        for rule_dec, rec in ((f["conferencia_plano"], f["recomendacao_plano"]), (f["auditoria"], f["recomendacao_auditoria"])):
+        for rule_dec, rec in ((f["auditoria"], f["recomendacao_auditoria"]), (f["conferencia_final"], f["recomendacao_conferencia"])):
             if not rule_dec or not rec:
                 continue
             rules_ok = rule_dec in ("APROVADO", "APROVADO_COM_RESSALVAS")

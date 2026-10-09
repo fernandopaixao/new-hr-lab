@@ -17,7 +17,7 @@ from .contracts import ContractRepo
 from .engine import contract_ref
 from .context import Ctx
 from .domain import (
-    AGUARDANDO_AGENTE, AGUARDANDO_APROVACAO, APPROVAL_AUDITORIA, APPROVAL_EXCECAO, APPROVAL_PLANO, APPROVAL_TYPE_LABELS,
+    AGUARDANDO_AGENTE, AGUARDANDO_APROVACAO, APPROVAL_AUDITORIA, APPROVAL_CONFERENCIA, APPROVAL_EXCECAO, APPROVAL_TYPE_LABELS,
     CANCELADO, CONCLUIDO, CONCLUIDO_COM_RESSALVAS, DUPLICADO, ERRO, FALHOU_COMPENSADO, FINAL_STATUSES, NA_FILA, NAO_ELEGIVEL,
     NEXT_STAGE, PARADO, PERSONAS, PROCESSANDO, REJEITADO, REJEITADO_NA_ENTRADA, REVERTIDO, STAGE_KEYS, STATUS_LABELS,
 )
@@ -86,7 +86,7 @@ class Pipeline:
         employees = await self.store.list_employees()
         cpfs = {e.get("cpf") for e in employees if e.get("situacao") != "DESLIGADO" and e.get("id") != case.get("colaborador_id")}
         return Ctx(event=case["evento"], norma=await self.repo.norma(when), politica=await self.repo.politica(when),
-                   cargos=await self.repo.cargos(when), cpfs_ativos=cpfs, receipts=receipts)
+                   cargos=await self.repo.cargos(when), cpfs_ativos=cpfs, receipts=receipts, employees={e["id"]: e for e in employees})
 
     async def processo(self, case: dict) -> dict | None:
         when = str(case["evento"].get("data_efetiva"))[:10]
@@ -329,46 +329,52 @@ class Pipeline:
                         estagio="planning", dados={"problemas": plano["problemas"], "estado_alvo": plano["estado_alvo"]})
         return StageResult("next", explanation=plano["resumo"])
 
-    async def stage_plan_review(self, case: dict) -> StageResult:
+    async def stage_audit(self, case: dict) -> StageResult:
+        """Audit before execution: the gate every plan must pass before any system is touched."""
         processo = await self.processo(case)
         ctx = await self.build_ctx(case)
         plano = case["plano"]
-        check = engine.check_plan(processo, ctx, case.get("estado_inicial") or {}, plano["projetado"], plano, case.get("cargo_alvo"))
-        case["conferencia_plano"] = check
+        result = engine.audit_plan(processo, ctx, case.get("estado_inicial") or {}, plano["projetado"], plano, case.get("cargo_alvo"))
+        # rules already released by an approved exception (in eligibility) do not ask twice
+        liberadas = {e.get("regra_id") for e in case.get("excecoes_aprovadas") or []}
+        case["auditoria"] = result
         await self.store.save_case(case)
-        for r in check["regras"]:
+        for r in result["regras"]:
             if not r["passou"]:
-                await log.write(self.store, log.REGRA, f"Conferência do plano: [{r['tipo']}] {r['id']}: {r['explicacao']}", case_id=case["id"],
-                                colaborador_id=case.get("colaborador_id"), estagio="plan_review", dados=r)
-        review = await agent.review(self.store, "PLANO", case, processo, ctx.cargo(case.get("cargo_alvo")))
+                await log.write(self.store, log.REGRA, f"Auditoria: [{r['tipo']}] {r['id']}: {r['explicacao']}", case_id=case["id"],
+                                colaborador_id=case.get("colaborador_id"), estagio="audit", dados=r)
+        review = await agent.review(self.store, "AUDITORIA", case, processo, ctx.cargo(case.get("cargo_alvo")))
         case = await self.store.get_case(case["id"])
-        case["conferencia_plano"] = check
-        case["agente_plano"] = review
-        case["recomendacao_plano"] = review["recomendacao"]
+        case["auditoria"] = result
+        case["agente_auditoria"] = review
+        case["recomendacao_auditoria"] = review["recomendacao"]
         await self.store.save_case(case)
         await log.write(self.store, log.AGENTE, f"Agente ({review.get('agente')}) recomenda {review['recomendacao']} o plano: {review.get('resumo')}",
-                        ator=f"agente:{review.get('modelo')}", case_id=case["id"], colaborador_id=case.get("colaborador_id"), estagio="plan_review",
+                        ator=f"agente:{review.get('modelo')}", case_id=case["id"], colaborador_id=case.get("colaborador_id"), estagio="audit",
                         dados={k: v for k, v in review.items() if k != "prompt"})
+        await log.write(self.store, log.AUDITORIA, f"Auditoria antes da execução: {result['decisao']}.", case_id=case["id"],
+                        colaborador_id=case.get("colaborador_id"), estagio="audit", dados={"resumo": result["resumo"]})
         settings = await self.store.settings()
-        if check["decisao"] == "REPROVADO":
-            bloq = [r for r in check["regras"] if not r["passou"] and r["tipo"] == "BLOQUEANTE"]
-            return StageResult("final", REJEITADO, "Plano reprovado na conferência determinística: " + " ".join(r["explicacao"] for r in bloq) +
-                               f" Recomendação do agente: {review['recomendacao']}.")
+        if result["decisao"] == "REPROVADO":
+            bloq = [r for r in result["regras"] if not r["passou"] and r["tipo"] == "BLOQUEANTE"]
+            return StageResult("final", REJEITADO, "Auditoria reprovou o plano antes da execução; nenhum sistema foi alterado. " +
+                               " ".join(r["explicacao"] for r in bloq) + f" Recomendação do agente: {review['recomendacao']}.")
         pending = 0
-        if check["decisao"] == "REQUER_APROVACAO":
-            for r in [r for r in check["regras"] if not r["passou"] and r["tipo"] == "EXCECIONAVEL"]:
-                await self.request_approval(case["id"], APPROVAL_EXCECAO, r["aprovadores"], r["explicacao"], stage="plan_review", regra=r,
-                                            recomendacao=review)
-                pending += 1
+        for r in [r for r in result["regras"] if not r["passou"] and r["tipo"] == "EXCECIONAVEL" and r["id"] not in liberadas]:
+            await self.request_approval(case["id"], APPROVAL_EXCECAO, r["aprovadores"], r["explicacao"], stage="audit", regra=r,
+                                        recomendacao=review)
+            pending += 1
         if review["recomendacao"] == "REPROVADO" or settings["human_review_mode"] == "SEMPRE":
             motivo = (f"Agente recomenda REPROVADO: {review.get('resumo')}" if review["recomendacao"] == "REPROVADO"
                       else f"Revisão humana obrigatória (modo SEMPRE). Agente recomenda {review['recomendacao']}: {review.get('resumo')}")
-            await self.request_approval(case["id"], APPROVAL_PLANO, ["COMPLIANCE", "HRBP"], motivo, stage="plan_review", recomendacao=review)
+            await self.request_approval(case["id"], APPROVAL_AUDITORIA, ["AUDITORIA", "COMPLIANCE"], motivo, stage="audit", recomendacao=review)
             pending += 1
         if pending:
-            return StageResult("wait", AGUARDANDO_APROVACAO, f"Plano aguarda {pending} decisão(ões) humana(s). Recomendação do agente: {review['recomendacao']}.")
-        return StageResult("next", explanation=f"Plano aprovado: regras determinísticas atendidas e agente recomenda {review['recomendacao']} "
-                                               f"(confiança {review.get('confianca')}).")
+            return StageResult("wait", AGUARDANDO_APROVACAO, f"Auditoria aguarda {pending} decisão(ões) humana(s) antes da execução. "
+                                                             f"Recomendação do agente: {review['recomendacao']}.")
+        return StageResult("next", explanation=f"Plano auditado e liberado para execução: regras atendidas"
+                                               f"{' com ressalvas' if result['decisao'] == 'APROVADO_COM_RESSALVAS' else ''} e agente recomenda "
+                                               f"{review['recomendacao']} (confiança {review.get('confianca')}).")
 
     async def stage_execution(self, case: dict) -> StageResult:
         processo = await self.processo(case)
@@ -388,7 +394,7 @@ class Pipeline:
                 await log.write(self.store, log.REPLANEJAMENTO, msg, case_id=case["id"], colaborador_id=emp_id, estagio="execution")
                 if case["replanejamentos"] > MAX_REPLANS:
                     return StageResult("final", ERRO, "Limite de replanejamentos atingido por concorrência no mesmo colaborador.")
-                for s in ("planning", "plan_review", "execution"):
+                for s in ("planning", "audit", "execution"):
                     case["etapas"][s] = {"status": "PENDENTE"}
                 await self.store.save_case(case)
                 return StageResult("next", explanation=msg, next_stage="planning")
@@ -447,7 +453,7 @@ class Pipeline:
         if is_admission:
             case["estado_inicial"] = {}
         await self.store.save_case(case)
-        return StageResult("next", explanation=f"{len(recibos)} operação(ões) executada(s) com recibo; segue para auditoria.")
+        return StageResult("next", explanation=f"{len(recibos)} operação(ões) executada(s) com recibo; segue para a conferência final.")
 
     async def compensate(self, case_id: str, emp_id: str, emp: dict, snapshots: list[dict], recibos: list[dict], motivo: str) -> dict:
         for snap in reversed(snapshots):
@@ -470,65 +476,88 @@ class Pipeline:
             await self.store.r.srem(f"{P}:employees", emp_id)
         return emp
 
-    async def stage_audit(self, case: dict) -> StageResult:
+    async def stage_verification(self, case: dict) -> StageResult:
+        """Final check after execution: receipts for every operation and final state equal to the audited one."""
         processo = await self.processo(case)
         recibos = (case.get("execucao") or {}).get("recibos") or []
-        ctx = await self.build_ctx(case, receipts=recibos)
-        # audit the state produced by this case's execution; later changes by other cases are reported, not blamed
+        # check the state produced by this case's execution; later changes by other cases are reported, not blamed
         final = case.get("estado_final") or {}
         current = await self.store.get_employee(case["colaborador_id"]) or {}
-        result = engine.audit(processo, ctx, case.get("estado_inicial") or {}, final, case["plano"]["projetado"], recibos, case.get("cargo_alvo"))
+        result = engine.verify_execution(case["plano"]["projetado"], final, recibos)
         if current and int(current.get("versao", 0)) != int(final.get("versao", 0)):
-            result["regras"].append({"id": "AUD-CONCORRENCIA", "descricao": "Colaborador alterado por outro caso após esta execução", "tipo": "ALERTA",
+            result["regras"].append({"id": "FIN-CONCORRENCIA", "descricao": "Colaborador alterado por outro caso após esta execução", "tipo": "ALERTA",
                                      "origem": "motor", "passou": False, "aprovadores": [],
                                      "explicacao": f"O cadastro mudou da versão {final.get('versao')} para {current.get('versao')} depois desta execução; "
-                                                   "a auditoria considerou o estado produzido por este caso."})
+                                                   "a conferência considerou o estado produzido por este caso."})
             if result["decisao"] == "APROVADO":
                 result["decisao"] = "APROVADO_COM_RESSALVAS"
-        case["auditoria"] = result
+        case["conferencia_final"] = result
         await self.store.save_case(case)
         for r in result["regras"]:
             if not r["passou"]:
-                await log.write(self.store, log.REGRA, f"Auditoria: [{r['tipo']}] {r['id']}: {r['explicacao']}", case_id=case["id"],
-                                colaborador_id=case.get("colaborador_id"), estagio="audit", dados=r)
-        review = await agent.review(self.store, "AUDITORIA", case, processo)
+                await log.write(self.store, log.REGRA, f"Conferência final: [{r['tipo']}] {r['id']}: {r['explicacao']}", case_id=case["id"],
+                                colaborador_id=case.get("colaborador_id"), estagio="verification", dados=r)
+        review = await agent.review(self.store, "CONFERENCIA", case, processo)
         case = await self.store.get_case(case["id"])
-        case["auditoria"] = result
-        case["agente_auditoria"] = review
-        case["recomendacao_auditoria"] = review["recomendacao"]
+        case["conferencia_final"] = result
+        case["agente_conferencia"] = review
+        case["recomendacao_conferencia"] = review["recomendacao"]
         await self.store.save_case(case)
         await log.write(self.store, log.AGENTE, f"Agente ({review.get('agente')}) recomenda {review['recomendacao']} a execução: {review.get('resumo')}",
-                        ator=f"agente:{review.get('modelo')}", case_id=case["id"], colaborador_id=case.get("colaborador_id"), estagio="audit",
+                        ator=f"agente:{review.get('modelo')}", case_id=case["id"], colaborador_id=case.get("colaborador_id"), estagio="verification",
                         dados={k: v for k, v in review.items() if k != "prompt"})
-        await log.write(self.store, log.AUDITORIA, f"Auditoria determinística: {result['decisao']}.", case_id=case["id"],
-                        colaborador_id=case.get("colaborador_id"), estagio="audit", dados={"resumo": result["resumo"], "divergencias": result["divergencias"]})
+        await log.write(self.store, log.AUDITORIA, f"Conferência final: {result['decisao']}.", case_id=case["id"],
+                        colaborador_id=case.get("colaborador_id"), estagio="verification",
+                        dados={"resumo": result["resumo"], "divergencias": result["divergencias"]})
         settings = await self.store.settings()
         if result["decisao"] == "REPROVADO" or review["recomendacao"] == "REPROVADO" or settings["human_review_mode"] == "SEMPRE":
             falhas = [r["explicacao"] for r in result["regras"] if not r["passou"] and r["tipo"] == "BLOQUEANTE"]
-            motivo = f"Auditoria determinística {result['decisao']}; agente recomenda {review['recomendacao']}: {review.get('resumo')}"
+            motivo = f"Conferência final {result['decisao']}; agente recomenda {review['recomendacao']}: {review.get('resumo')}"
             if falhas:
                 motivo += " Falhas: " + " ".join(falhas)
-            await self.request_approval(case["id"], APPROVAL_AUDITORIA, ["AUDITORIA"], motivo, stage="audit", recomendacao=review)
+            await self.request_approval(case["id"], APPROVAL_CONFERENCIA, ["AUDITORIA"], motivo, stage="verification", recomendacao=review)
             return StageResult("wait", AGUARDANDO_APROVACAO, "Execução aguarda decisão da auditoria interna. Rejeitar reverte todas as operações.")
-        if result["decisao"] == "APROVADO_COM_RESSALVAS":
-            return StageResult("final", CONCLUIDO_COM_RESSALVAS, "Execução conforme, com ressalvas: " +
-                               " ".join(r["explicacao"] for r in result["regras"] if not r["passou"]))
-        return StageResult("final", CONCLUIDO, f"Execução auditada e conforme ao contrato de serviço; agente recomenda {review['recomendacao']}.")
+        ressalvas = [r["explicacao"] for r in result["regras"] if not r["passou"]]
+        # alerts and exceptions accepted in the audit stay visible as reservations on the final result
+        ressalvas += [f"Auditoria: {r['explicacao']}" for r in (case.get("auditoria") or {}).get("regras") or []
+                      if not r["passou"] and r["tipo"] != "BLOQUEANTE"]
+        if ressalvas:
+            return StageResult("final", CONCLUIDO_COM_RESSALVAS, "Execução igual à auditada, com ressalvas: " + " ".join(ressalvas))
+        return StageResult("final", CONCLUIDO, f"Execução igual à auditada e com recibos; agente recomenda {review['recomendacao']}.")
 
     # ------------------------------------------------------------ approvals
+    async def direct_manager(self, case: dict) -> dict | None:
+        """The real person behind the GESTOR persona for this case: the employee's direct manager.
+
+        Admissions have no record yet, so the manager informed in the event or the head of the unit is used.
+        """
+        ctx = await self.build_ctx(case)
+        emp = ctx.employees.get(case.get("colaborador_id") or "") or {}
+        dados = case["evento"].get("dados") or {}
+        gid = emp.get("gestor_id") or dados.get("gestor_id") or (None if emp else ctx.unit_manager(dados.get("unidade")))
+        gestor = ctx.employees.get(gid or "")
+        if not gestor:
+            return None
+        return {"id": gestor["id"], "nome": gestor.get("nome"), "cargo": gestor.get("cargo"), "unidade": gestor.get("unidade"),
+                "situacao": gestor.get("situacao")}
+
     async def request_approval(self, case_id: str, tipo: str, aprovadores: list[str], explicacao: str, *, stage: str,
                                regra: dict | None = None, recomendacao: dict | None = None) -> dict:
         case = await self.store.get_case(case_id)
+        responsavel = await self.direct_manager(case) if "GESTOR" in aprovadores else None
         ap = {
             "id": new_id("apr"), "case_id": case_id, "tipo": tipo, "tipo_rotulo": APPROVAL_TYPE_LABELS[tipo], "estagio": stage,
-            "aprovadores": aprovadores, "status": "PENDENTE", "explicacao": explicacao, "criado_em": now_ms(),
+            "aprovadores": aprovadores, "responsavel": responsavel, "status": "PENDENTE", "explicacao": explicacao, "criado_em": now_ms(),
             "regra": regra, "recomendacao_agente": {k: v for k, v in (recomendacao or {}).items() if k in ("recomendacao", "confianca", "resumo", "achados", "justificativa", "agente", "modelo")} or None,
             "colaborador_id": case.get("colaborador_id"), "colaborador_nome": case.get("colaborador_nome"), "evento_tipo": case.get("evento_tipo"),
         }
         await self.store.save_approval(ap)
         case["aprovacoes"] = (case.get("aprovacoes") or []) + [ap["id"]]
+        case["aguardando"] = (case.get("aguardando") or []) + [
+            {"id": ap["id"], "tipo_rotulo": ap["tipo_rotulo"], "aprovadores": aprovadores, "responsavel": responsavel}]
         await self.store.save_case(case)
-        await log.write(self.store, log.APROVACAO_SOLICITADA, f"{ap['tipo_rotulo']} solicitada a {'/'.join(aprovadores)}: {explicacao}",
+        quem = "/".join(aprovadores) + (f" ({responsavel['nome']}, gestor imediato)" if responsavel else "")
+        await log.write(self.store, log.APROVACAO_SOLICITADA, f"{ap['tipo_rotulo']} solicitada a {quem}: {explicacao}",
                         case_id=case_id, colaborador_id=case.get("colaborador_id"), estagio=stage, dados={"aprovacao": ap["id"], "regra": (regra or {}).get("id")})
         return ap
 
@@ -548,10 +577,11 @@ class Pipeline:
                    "justificativa": justificativa.strip(), "decidido_em": now_ms()})
         await self.store.save_approval(ap)
         case = await self.store.get_case(ap["case_id"])
+        case["aguardando"] = [a for a in case.get("aguardando") or [] if a.get("id") != ap_id]
         if ap["status"] == "APROVADA" and ap["tipo"] == APPROVAL_EXCECAO:
             case["excecoes_aprovadas"] = (case.get("excecoes_aprovadas") or []) + [
                 {"regra_id": (ap.get("regra") or {}).get("id"), "aprovacao": ap_id, "por": persona, "justificativa": ap["justificativa"]}]
-            await self.store.save_case(case)
+        await self.store.save_case(case)
         await log.write(self.store, log.APROVACAO_DECIDIDA,
                         f"{ap['tipo_rotulo']} {ap['status'].lower()} por {PERSONAS.get(persona, {}).get('pessoa')} ({persona}): {ap['justificativa']}",
                         ator=f"persona:{persona}", case_id=ap["case_id"], colaborador_id=ap.get("colaborador_id"), estagio=ap["estagio"],
@@ -570,8 +600,8 @@ class Pipeline:
                 if other["status"] == "PENDENTE":
                     other.update({"status": "CANCELADA", "decidido_em": now_ms(), "justificativa": "Cancelada: outra decisão do caso foi rejeitada."})
                     await self.store.save_approval(other)
-            if ap["tipo"] == APPROVAL_AUDITORIA:
-                await self.revert_after_audit(case, ap)
+            if ap["tipo"] == APPROVAL_CONFERENCIA:
+                await self.revert_after_verification(case, ap)
                 return
             await self.apply_result(case["id"], ap["estagio"], StageResult(
                 "final", REJEITADO, f"{ap['tipo_rotulo']} rejeitada por {ap['decidido_por'].get('pessoa')} ({ap['decidido_por']['persona']}): {ap['justificativa']}"))
@@ -579,28 +609,28 @@ class Pipeline:
         if any(a["status"] == "PENDENTE" for a in same_stage):
             await self.store.save_case(case)
             return
-        if ap["tipo"] == APPROVAL_AUDITORIA:
-            had_issue = (case.get("auditoria") or {}).get("decisao") != "APROVADO" or case.get("recomendacao_auditoria") == "REPROVADO"
+        if ap["tipo"] == APPROVAL_CONFERENCIA:
+            had_issue = (case.get("conferencia_final") or {}).get("decisao") != "APROVADO" or case.get("recomendacao_conferencia") == "REPROVADO"
             status = CONCLUIDO_COM_RESSALVAS if had_issue else CONCLUIDO
-            await self.apply_result(case["id"], "audit", StageResult(
+            await self.apply_result(case["id"], "verification", StageResult(
                 "final", status, f"Execução aceita pela auditoria interna ({ap['decidido_por'].get('pessoa')}): {ap['justificativa']}"))
             return
         await self.apply_result(case["id"], ap["estagio"], StageResult(
             "next", explanation=f"Todas as decisões humanas do estágio foram aprovadas; última por {ap['decidido_por'].get('pessoa')}."))
 
-    async def revert_after_audit(self, case: dict, ap: dict) -> None:
+    async def revert_after_verification(self, case: dict, ap: dict) -> None:
         emp_id = case["colaborador_id"]
         snapshots = (case.get("execucao") or {}).get("snapshots") or []
         recibos = (case.get("execucao") or {}).get("recibos") or []
         async with self.store.employee_lock(emp_id):
             emp = await self.store.get_employee(emp_id) or {}
-            emp = await self.compensate(case["id"], emp_id, emp, snapshots, recibos, motivo="auditoria rejeitou a execução")
+            emp = await self.compensate(case["id"], emp_id, emp, snapshots, recibos, motivo="conferência final rejeitada")
         case = await self.store.get_case(case["id"])
         case["execucao"]["recibos"] = recibos
         case["estado_final"] = emp
         await self.store.save_case(case)
-        await self.apply_result(case["id"], "audit", StageResult(
-            "final", REVERTIDO, f"Auditoria rejeitou a execução ({ap['decidido_por'].get('pessoa')}: {ap['justificativa']}); operações compensadas."))
+        await self.apply_result(case["id"], "verification", StageResult(
+            "final", REVERTIDO, f"A auditoria interna rejeitou a execução na conferência final ({ap['decidido_por'].get('pessoa')}: {ap['justificativa']}); operações compensadas."))
 
     # ------------------------------------------------------------ debug controls
     async def release(self, case_id: str, *, continuar: bool = False, actor: str = "OPERADOR") -> dict:
@@ -651,7 +681,7 @@ class Pipeline:
             case["depuracao"] = depuracao
         case["etapas"][stage]["status"] = "NA_FILA"
         case.update({"status": NA_FILA, "estagio": stage, "estagio_parado": None, "liberado_para": None, "decisao_final": None,
-                     "resumo": f"Reprocessando a partir de '{stage}'."})
+                     "aguardando": [], "resumo": f"Reprocessando a partir de '{stage}'."})
         await self.store.r.hdel(WAITING_AGENT_SET, case_id)
         await self.store.save_case(case)
         await log.write(self.store, log.DEPURACAO, f"Caso reprocessado a partir de {stage}{' com evento editado' if event_patch else ''}.",
@@ -667,7 +697,7 @@ class Pipeline:
         if case.get("status") in FINAL_STATUSES:
             raise ValueError("caso já finalizado")
         if case.get("etapas", {}).get("execution", {}).get("status") in ("OK", "PROCESSANDO"):
-            raise ValueError("a execução já ocorreu; use a auditoria para reverter")
+            raise ValueError("a execução já ocorreu; use a conferência final para reverter")
         for ap_id in case.get("aprovacoes") or []:
             ap = await self.store.get_approval(ap_id)
             if ap and ap["status"] == "PENDENTE":

@@ -8,7 +8,7 @@ A execução altera vários "sistemas" (folha, benefícios, IAM, patrimônio, eS
 
 - As operações do plano são executadas em ordem. Antes de cada uma, o executor guarda um **snapshot dos campos que ela declara alterar** (ADR 0005). Cada operação gera um recibo com protocolo.
 - Se uma operação falha, as já aplicadas são compensadas na ordem inversa, restaurando os snapshots. Operações não compensáveis (por exemplo, uma notificação enviada) ficam marcadas para tratamento manual.
-- Se a auditoria reprova e a revisão humana confirma, a mesma compensação reverte a execução (status `REVERTIDO`).
+- Se a conferência final reprova e a auditoria interna confirma, a mesma compensação reverte a execução (status `REVERTIDO`). Desde a ADR 0018 isso é raro: as verificações do contrato de serviço rodam antes da execução, quando ainda não há nada a desfazer.
 - Falhas podem ser injetadas por evento (`simular_falha_em`) ou por percentual global nas configurações.
 
 ## Alternativas consideradas

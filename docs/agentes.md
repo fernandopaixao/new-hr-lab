@@ -4,7 +4,7 @@ O laboratório usa modelos locais no Ollama em três papéis. Nenhum deles decid
 
 | Papel | Modelo padrão | Código | Onde aparece |
 | --- | --- | --- | --- |
-| Agente de conferência | `qwen2.5:7b` (`OLLAMA_MODEL`) | `agent.py` | Estágios de conferência do plano e auditoria |
+| Agente de conferência | `qwen2.5:7b` (`OLLAMA_MODEL`) | `agent.py` | Auditoria (antes da execução) e conferência final |
 | Embeddings | `nomic-embed-text` (`EMBEDDING_MODEL`) | `embeddings.py`, `indexer.py` | Índice de todos os eventos, busca semântica |
 | Agente de perguntas | o mesmo do conferente, ou `ask_model` | `ask.py` | Tela Perguntar |
 
@@ -12,19 +12,19 @@ O laboratório usa modelos locais no Ollama em três papéis. Nenhum deles decid
 
 ### Quando é chamado
 
-- **Conferência do plano**, depois que as regras de conferência e o compliance foram avaliados sobre o estado projetado.
-- **Auditoria**, depois que as verificações foram avaliadas sobre o estado final.
+- **Auditoria**, antes da execução, depois que as regras do plano, as verificações do contrato de serviço, o compliance e o estado alvo foram avaliados sobre o estado projetado (tipo `AUDITORIA`).
+- **Conferência final**, depois da execução, depois que os recibos e o estado final foram comparados com o que foi auditado (tipo `CONFERENCIA`).
 
 ### O que recebe
 
-O prompt (`build_plan_prompt` e `build_audit_prompt`) contém, em JSON compacto:
+O prompt (`build_audit_prompt` e `build_verification_prompt`) contém, em JSON compacto:
 
 - o evento e a data efetiva;
 - o colaborador resumido (sem dados que não importam para a decisão);
 - o contrato de processo e o estado alvo do cargo;
 - o plano, com motivo e base legal de cada operação, e as operações descartadas;
 - o resultado das regras determinísticas, já avaliadas;
-- na auditoria, os recibos, as compensações e a diferença entre antes e depois.
+- na conferência final, os recibos, as compensações, a diferença entre antes e depois e as divergências entre o auditado e o final.
 
 O prompt completo e a resposta bruta ficam gravados no caso e aparecem na aba do agente, no detalhe do caso.
 
@@ -57,7 +57,7 @@ A resposta é restrita por um esquema JSON passado ao Ollama (`format`):
 | Regra excecionável falhou | qualquer | Aprovação de exceção pelas personas da regra | Exceção e revisão humana |
 | Regra bloqueante falhou | qualquer | Rejeitado (o parecer do agente fica registrado) | Rejeitado |
 
-A tabela vale para a conferência do plano. Na auditoria a execução já aconteceu: qualquer reprovação, das verificações ou do agente, vai para revisão humana, e a confirmação da reprovação reverte a execução.
+A tabela vale para a auditoria, antes da execução: rejeitar ali não altera nenhum sistema. Na conferência final a execução já aconteceu: qualquer reprovação, das verificações ou do agente, vai para a auditoria interna, e a confirmação da reprovação reverte a execução.
 
 Na revisão humana, a pessoa vê a recomendação do agente ao lado das regras e decide com justificativa. A recomendação nunca é omitida, mesmo quando a decisão é humana. Quando o agente discorda das regras, o painel conta como divergência e o log registra os dois lados.
 

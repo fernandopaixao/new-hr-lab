@@ -48,8 +48,8 @@ def test_standard_promotion_is_eligible_and_plan_approved(seeds, team, make_ctx)
     ops = [i["operacao"] for i in plano["operacoes"]]
     assert "ALTERAR_CARGO" in ops and "ALTERAR_SALARIO" in ops
     assert plano["projetado"]["cargo"] == alvo
-    check = engine.check_plan(processo, ctx, emp, plano["projetado"], plano, alvo)
-    assert check["decisao"] == "APROVADO", [r for r in check["regras"] if not r.get("atendida")]
+    check = engine.audit_plan(processo, ctx, emp, plano["projetado"], plano, alvo)
+    assert check["decisao"] == "APROVADO", [r for r in check["regras"] if not r.get("passou")]
 
 
 def test_promotion_with_disciplinary_process_needs_exception(seeds, team, make_ctx):

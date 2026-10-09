@@ -5,7 +5,7 @@ Laboratório para criar, demonstrar, experimentar e estressar uma arquitetura de
 Toda operação de RH segue a mesma linha de produção:
 
 ```
-evento -> gatilho -> elegibilidade -> planejamento -> conferência do plano -> execução (saga) -> auditoria
+evento -> gatilho -> elegibilidade -> planejamento -> auditoria -> execução (saga) -> conferência final
 ```
 
 - **Eventos** (promoção, admissão, transferência, desligamento, reajuste da CCT, etc.) bastam para disparar e alimentar o fluxo inteiro.
@@ -13,9 +13,11 @@ evento -> gatilho -> elegibilidade -> planejamento -> conferência do plano -> e
   - **norma**: CLT e CCT dos bancários, com valores ilustrativos e fictícios;
   - **política** interna;
   - **cargo**: estado alvo e compliance de cada posição, como garden leave para executivos e celular corporativo para a média gerência;
-  - **processo**: elegibilidade, orquestração, conferência e auditoria.
+  - **processo**: elegibilidade, orquestração e auditoria, avaliada antes de qualquer sistema ser alterado.
 - **Prateleira de serviços**: operações desacopladas e parametrizáveis que qualquer processo pode chamar, como adicionar benefício, alterar salário, incluir verba de bônus ou revogar acesso.
-- **Agente de conferência com IA (Ollama)**: audita o plano e a execução e sempre dá uma recomendação clara, APROVADO ou REPROVADO, com justificativa. Regras determinísticas decidem; o agente é a segunda linha de defesa.
+- **Agente de conferência com IA (Ollama)**: audita o plano antes da execução, confere a execução depois e sempre dá uma recomendação clara, APROVADO ou REPROVADO, com justificativa. Regras determinísticas decidem; o agente é a segunda linha de defesa.
+- **Hierarquia**: cada colaborador tem gestor imediato; o organograma é navegável, as regras usam a hierarquia e as aprovações do gestor mostram o gestor real.
+- **Próximo passo** explícito em cada fase e em cada caso: o que acontece agora e quem precisa agir.
 - **Aprovações de exceção** por persona, com justificativa registrada.
 - **Log de decisões** explica por que uma operação foi escolhida ou descartada, por que alguém não é elegível e quem aprovou o quê.
 - **Visibilidade**: painel com funil, gargalos, regras que mais barram, aprovações e concordância entre agente e regras, além de métricas Prometheus.

@@ -9,8 +9,8 @@ As rotas que alteram algo aceitam o cabeçalho `X-Persona` (padrão `OPERADOR`).
 | Método e rota | Corpo ou parâmetros | Resultado |
 | --- | --- | --- |
 | `POST /api/events` | `{evento: {...}, depuracao, breakpoints}` ou o próprio evento | Abre um caso e coloca na fila do gatilho. |
-| `GET /api/cases` | `limit`, `status` | Resumos dos casos mais recentes. |
-| `GET /api/cases/{id}` | - | Caso completo, com trilha. |
+| `GET /api/cases` | `limit`, `status` | Resumos dos casos mais recentes, cada um com `proximo_passo` (`texto`, `quem`, `encerrado`). |
+| `GET /api/cases/{id}` | - | Caso completo, com trilha. A auditoria antes da execução está em `auditoria` e `agente_auditoria`; a conferência final em `conferencia_final` e `agente_conferencia`. |
 | `POST /api/cases/{id}/release` | `{continuar}` | Libera um caso parado para o próximo estágio; `continuar: true` desliga o passo a passo. |
 | `POST /api/cases/{id}/retry` | `{estagio, evento, depuracao}` | Reprocessa a partir de um estágio, opcionalmente com o evento editado. |
 | `POST /api/cases/{id}/cancel` | - | Cancela um caso que não terminou. |
@@ -38,22 +38,22 @@ Exemplo de evento:
 | `POST /api/control` | `{paused, paused_stages, breakpoints}` | Altera o controle; é registrado no log. |
 | `GET /api/stats` | - | Contagens por status, estágio e tipo de evento, durações e recomendações do agente (usado pela tela Linha). |
 | `GET /api/stream` | - | Server-Sent Events com as atualizações de casos, controle, colaboradores e aprovações. |
-| `GET /api/meta` | - | Estágios, status, personas, tipos de evento, cenários, prateleira e desvios. |
+| `GET /api/meta` | - | Estágios (com a `saida` de cada um), o que aprovar ou rejeitar provoca em cada estágio (`resultado_aprovacao`), status, personas, tipos de evento, cenários, prateleira e desvios. |
 | `GET /api/health` | - | Verifica a API e o Redis. |
 
 ## Aprovações
 
 | Método e rota | Corpo ou parâmetros | Resultado |
 | --- | --- | --- |
-| `GET /api/approvals` | `pendentes`, `limit` | Aprovações, com a recomendação do agente. |
+| `GET /api/approvals` | `pendentes`, `limit` | Aprovações, com a recomendação do agente e, quando a regra pede o Gestor, o gestor imediato real em `responsavel`. Tipos: `EXCECAO_ELEGIBILIDADE` (exceção de regra), `REVISAO_AUDITORIA` (antes da execução) e `REVISAO_CONFERENCIA_FINAL` (depois; rejeitar reverte). |
 | `POST /api/approvals/{id}/decide` | `{decisao: APROVAR ou REJEITAR, justificativa, persona}` | Decide. A persona precisa estar entre os aprovadores; a justificativa é obrigatória (mínimo de 5 caracteres). |
 
 ## Colaboradores
 
 | Método e rota | Corpo | Resultado |
 | --- | --- | --- |
-| `GET /api/employees` | - | Lista com resumo de conformidade. |
-| `GET /api/employees/{id}` | - | Cadastro, estado alvo, conformidade, casos e trilha. |
+| `GET /api/employees` | - | Lista com resumo de conformidade, nome do cargo, nível, `gestor_id`, nome do gestor e tamanho da equipe direta (base do organograma). |
+| `GET /api/employees/{id}` | - | Cadastro, contrato do cargo, `hierarquia` (cadeia de gestão, equipe direta e número de colegas), estado alvo, conformidade, casos e trilha. |
 | `PUT /api/employees/{id}` | campos a alterar | Grava, incrementa a versão e registra a diferença no log. |
 | `POST /api/employees/generate` | `{tamanho, semente, desvio_percentual, substituir}` | Gera o time artificial. |
 | `POST /api/employees/{id}/drift` | `{tipo}` | Injeta um desvio de conformidade (os tipos estão em `meta.desvios`). |

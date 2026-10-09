@@ -31,28 +31,33 @@
 | Data efetiva | Data em que o evento produz efeito. Escolhe as versões vigentes dos contratos e é o "hoje" das expressões. |
 | Caso | Registro de um evento atravessando a linha, com tudo o que aconteceu nele. |
 | Evento coletivo | Evento sem colaborador, que gera um caso filho por pessoa selecionada. |
-| Linha de produção | Sequência fixa de seis estágios: gatilho, elegibilidade, planejamento, conferência do plano, execução e auditoria. |
+| Linha de produção | Sequência fixa de seis estágios: gatilho, elegibilidade, planejamento, auditoria, execução e conferência final. |
 | Estágio ou estação | Uma etapa da linha, com fila própria no Redis. |
 | Contrato | Documento versionado que descreve regras e estado alvo: norma, política, cargo ou processo. |
 | Vigência | Período em que uma versão de contrato vale. |
 | Regra | Expressão que deve ser verdadeira, com tipo (bloqueante, excecionável, alerta), base legal e explicação de falha. |
 | Exceção | Aprovação humana que libera uma regra excecionável que falhou. |
 | Estado alvo (to-be) | Como o colaborador deve estar, pelo cargo e pela norma: jornada, faixa, verbas, benefícios, acessos, equipamentos, cláusulas. |
-| Conformidade (compliance) | Regras que valem sempre para o cargo ou para todos, conferidas no plano, na auditoria e na tela Colaboradores. |
+| Conformidade (compliance) | Regras que valem sempre para o cargo ou para todos, conferidas na auditoria e na tela Colaboradores. |
 | Desvio | Diferença entre o cadastro e o estado alvo. Pode ser injetado para testes. |
 | Prateleira | Catálogo de operações reutilizáveis que alteram sistemas. |
 | Operação | Item da prateleira: parâmetros, campos alterados, aplicação e compensação. |
 | Operação derivada | Operação acrescentada ao plano pela diferença entre o estado atual e o estado alvo. |
 | Plano | Lista ordenada de operações escolhidas, com motivo e base legal, e das operações descartadas. |
-| Estado projetado | Cópia do colaborador com o plano aplicado em simulação, usada na conferência. |
+| Estado projetado | Cópia do colaborador com o plano aplicado em simulação. É o que a auditoria avalia e o que a conferência final compara com o resultado. |
+| Auditoria | Estágio antes da execução que avalia o plano e o estado projetado contra o contrato de serviço, o compliance e o estado alvo. Nada é executado sem passar por ela. |
+| Conferência final | Estágio depois da execução que prova que o executado é igual ao auditado (recibos e estado final igual ao projetado). |
+| Próximo passo | O que acontece agora com um caso e quem precisa agir, calculado a cada mudança do caso. |
 | Recibo | Comprovante de uma operação executada: protocolo, sistema, antes e depois. |
 | Saga | Execução em passos com compensação dos passos já feitos em caso de falha. |
 | Compensação | Desfazer de uma operação, restaurando os campos que ela declarou alterar. |
-| Reversão | Compensação da execução inteira depois de uma auditoria reprovada e confirmada. |
+| Reversão | Compensação da execução inteira depois de uma conferência final reprovada e confirmada pela auditoria interna. |
 | Replanejamento | Volta ao planejamento quando o cadastro mudou entre o plano e a execução. |
-| Agente de conferência | Modelo de linguagem que audita plano e execução e recomenda APROVADO ou REPROVADO. |
+| Agente de conferência | Modelo de linguagem que audita o plano antes da execução, confere a execução depois e recomenda APROVADO ou REPROVADO. |
 | Agente simulado (heurístico) | Substituto opcional do agente quando o Ollama está fora; toda decisão dele é marcada. |
 | Persona | Papel que decide aprovações (Operador, Gestor, HRBP, Jurídico, Compliance, Auditoria, Comitê). Não há login. |
+| Gestor imediato | Colaborador indicado em `gestor_id`. Forma a hierarquia; nas aprovações do Gestor, é a pessoa real mostrada como responsável. |
+| Organograma | Árvore da hierarquia montada pelos gestores imediatos, na tela Colaboradores. |
 | Log de decisões | Registro append-only de tudo o que foi decidido e por quê. |
 | Fatos | Linha plana por caso, usada pelo painel e pelo agente de perguntas para contar e agregar. |
 | Embedding | Vetor numérico que representa o significado de um texto; permite busca por semelhança. |

@@ -149,7 +149,7 @@ export default function Contracts() {
   return (
     <div>
       <div className="page-head">
-        <div><h2>Contratos</h2><p>Normas, políticas, contratos de cargo (estado alvo e compliance) e contratos de processo (elegibilidade, orquestração, conferência e auditoria). Toda alteração gera versão e entra no log.</p></div>
+        <div><h2>Contratos</h2><p>Normas, políticas, contratos de cargo (estado alvo e compliance) e contratos de processo (elegibilidade, orquestração e auditoria antes da execução). Toda alteração gera versão e entra no log.</p></div>
         <button className="btn right" onClick={async () => { await api.post('/contracts/reset'); toast('Contratos restaurados'); loadList(); setSel(null); setDoc(null) }}>Restaurar exemplos</button>
       </div>
       <div className="list-side">
@@ -216,8 +216,8 @@ export default function Contracts() {
                       </div>
                       <RulesEditor label="Elegibilidade" rules={doc.elegibilidade?.regras} onChange={up('elegibilidade.regras')} personas={meta.personas} />
                       <OpsEditor ops={doc.orquestracao?.operacoes} onChange={up('orquestracao.operacoes')} shelf={meta.prateleira} />
-                      <RulesEditor label="Conferência do plano" rules={doc.conferencia_plano?.regras} onChange={up('conferencia_plano.regras')} personas={meta.personas} />
-                      <RulesEditor label="Auditoria (contrato de serviço)" rules={doc.auditoria?.verificacoes} onChange={up('auditoria.verificacoes')} personas={meta.personas} />
+                      <RulesEditor label="Auditoria: regras do plano (antes da execução)" rules={doc.conferencia_plano?.regras} onChange={up('conferencia_plano.regras')} personas={meta.personas} />
+                      <RulesEditor label="Auditoria: verificações do contrato de serviço (antes da execução)" rules={doc.auditoria?.verificacoes} onChange={up('auditoria.verificacoes')} personas={meta.personas} />
                     </>}
                   </>}
                 </div>

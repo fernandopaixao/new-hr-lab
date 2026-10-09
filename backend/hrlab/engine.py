@@ -324,57 +324,65 @@ def compliance_rules(ctx: Ctx, emp: dict) -> list[tuple[list[dict], str]]:
     return out
 
 
-def check_plan(processo: dict, ctx: Ctx, anterior: dict, projetado: dict, plan_data: dict, cargo_alvo: str | None) -> dict:
-    names = ctx.names(projetado, anterior=anterior, cargo_alvo=cargo_alvo)
-    results = eval_rules((processo.get("conferencia_plano") or {}).get("regras") or [], names, contract_ref(processo))
-    for rules, origem in compliance_rules(ctx, projetado):
-        results += eval_rules(rules, names, origem)
-    for problem in plan_data.get("problemas") or []:
-        results.append({"id": "PLANO-SIMULACAO", "descricao": "Simulação do plano", "tipo": "BLOQUEANTE", "origem": "motor",
-                        "passou": False, "explicacao": problem, "aprovadores": []})
+def _decide(results: list[dict]) -> tuple[str, dict]:
     s = summarize_rules(results)
     if s["bloqueantes"]:
         decisao = "REPROVADO"
     elif s["excecionaveis"]:
         decisao = "REQUER_APROVACAO"
-    else:
-        decisao = "APROVADO"
-    return {"decisao": decisao, "regras": results, "resumo": {k: len(v) if isinstance(v, list) else v for k, v in s.items()}}
-
-
-def audit(processo: dict, ctx: Ctx, anterior: dict, final: dict, projetado: dict, receipts: list[dict], cargo_alvo: str | None) -> dict:
-    ctx.receipts = receipts
-    names = ctx.names(final, anterior=anterior, cargo_alvo=cargo_alvo)
-    aud = processo.get("auditoria") or {}
-    results = eval_rules(aud.get("verificacoes") or [], names, contract_ref(processo))
-    if aud.get("incluir_compliance", True):
-        for rules, origem in compliance_rules(ctx, final):
-            results += eval_rules(rules, names, origem)
-    nao_exec = [r for r in receipts if r.get("status") != "EXECUTADA"]
-    results.append({"id": "AUD-RECIBOS", "descricao": "Todas as operações planejadas possuem recibo de execução", "tipo": "BLOQUEANTE",
-                    "origem": "contrato de serviço", "passou": not nao_exec, "aprovadores": [],
-                    "explicacao": "Todas as operações têm recibo." if not nao_exec else
-                    f"{len(nao_exec)} operação(ões) sem execução confirmada: " + ", ".join(r["operacao"] for r in nao_exec)})
-    pendencias = target_divergences(final, ctx)
-    results.append({"id": "AUD-ESTADO-ALVO", "descricao": "Estado final aderente ao estado alvo dos contratos", "origem": "contrato de serviço",
-                    "tipo": "BLOQUEANTE" if (processo.get("orquestracao") or {}).get("derivar_estado_alvo", True) else "ALERTA",
-                    "passou": not pendencias, "aprovadores": [],
-                    "explicacao": "Estado final aderente ao estado alvo." if not pendencias else
-                    "Pendências em relação ao estado alvo: " + " ".join(pendencias)})
-    divergencias = state_divergences(projetado, final)
-    results.append({"id": "AUD-PROJECAO", "descricao": "Estado final igual ao estado projetado no plano", "tipo": "BLOQUEANTE",
-                    "origem": "contrato de serviço", "passou": not divergencias, "aprovadores": [],
-                    "explicacao": "Estado final corresponde ao projetado." if not divergencias else
-                    "Divergências entre projetado e final: " + "; ".join(divergencias)})
-    s = summarize_rules(results)
-    if s["bloqueantes"]:
-        decisao = "REPROVADO"
-    elif s["excecionaveis"] or s["alertas"]:
+    elif s["alertas"]:
         decisao = "APROVADO_COM_RESSALVAS"
     else:
         decisao = "APROVADO"
-    return {"decisao": decisao, "regras": results, "resumo": {k: len(v) if isinstance(v, list) else v for k, v in s.items()},
-            "divergencias": divergencias}
+    return decisao, {k: len(v) if isinstance(v, list) else v for k, v in s.items()}
+
+
+def audit_plan(processo: dict, ctx: Ctx, anterior: dict, projetado: dict, plan_data: dict, cargo_alvo: str | None) -> dict:
+    """Pre-execution audit: everything the service contract demands, checked on the projected state.
+
+    Nothing has touched any system yet, so a failure costs nothing to stop. The
+    planned operations stand in for receipts, so `operacao_executada(X)` reads
+    "X is in the plan" here; the final check later proves each one really ran.
+    """
+    ctx.receipts = [{"operacao": o["operacao"], "status": "EXECUTADA", "simulado": True} for o in plan_data.get("operacoes") or []]
+    names = ctx.names(projetado, anterior=anterior, cargo_alvo=cargo_alvo)
+    ref = contract_ref(processo)
+    results = eval_rules((processo.get("conferencia_plano") or {}).get("regras") or [], names, ref)
+    results += eval_rules((processo.get("auditoria") or {}).get("verificacoes") or [], names, ref)
+    for rules, origem in compliance_rules(ctx, projetado):
+        results += eval_rules(rules, names, origem)
+    for problem in plan_data.get("problemas") or []:
+        results.append({"id": "PLANO-SIMULACAO", "descricao": "Simulação do plano", "tipo": "BLOQUEANTE", "origem": "motor",
+                        "passou": False, "explicacao": problem, "aprovadores": []})
+    pendencias = target_divergences(projetado, ctx)
+    results.append({"id": "AUD-ESTADO-ALVO", "descricao": "Estado projetado aderente ao estado alvo dos contratos", "origem": "contrato de serviço",
+                    "tipo": "BLOQUEANTE" if (processo.get("orquestracao") or {}).get("derivar_estado_alvo", True) else "ALERTA",
+                    "passou": not pendencias, "aprovadores": [],
+                    "explicacao": "Estado projetado aderente ao estado alvo." if not pendencias else
+                    "Pendências em relação ao estado alvo: " + " ".join(pendencias)})
+    decisao, resumo = _decide(results)
+    return {"decisao": decisao, "regras": results, "resumo": resumo, "momento": "ANTES_DA_EXECUCAO"}
+
+
+def verify_execution(projetado: dict, final: dict, receipts: list[dict]) -> dict:
+    """Final check after execution: what ran is exactly what the audit approved.
+
+    The audit already proved the projected state compliant, so the final check
+    only needs to prove that every planned operation has a receipt and that the
+    resulting state equals the projection.
+    """
+    nao_exec = [r for r in receipts if r.get("status") != "EXECUTADA"]
+    results = [{"id": "FIN-RECIBOS", "descricao": "Todas as operações planejadas possuem recibo de execução", "tipo": "BLOQUEANTE",
+                "origem": "contrato de serviço", "passou": not nao_exec, "aprovadores": [],
+                "explicacao": "Todas as operações têm recibo." if not nao_exec else
+                f"{len(nao_exec)} operação(ões) sem execução confirmada: " + ", ".join(r["operacao"] for r in nao_exec)}]
+    divergencias = state_divergences(projetado, final)
+    results.append({"id": "FIN-PROJECAO", "descricao": "Estado final igual ao estado auditado antes da execução", "tipo": "BLOQUEANTE",
+                    "origem": "contrato de serviço", "passou": not divergencias, "aprovadores": [],
+                    "explicacao": "Estado final corresponde ao estado auditado." if not divergencias else
+                    "Divergências entre o estado auditado e o final: " + "; ".join(divergencias)})
+    decisao, resumo = _decide(results)
+    return {"decisao": decisao, "regras": results, "resumo": resumo, "divergencias": divergencias, "momento": "DEPOIS_DA_EXECUCAO"}
 
 
 def target_divergences(emp: dict, ctx: Ctx) -> list[str]:

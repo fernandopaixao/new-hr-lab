@@ -56,6 +56,12 @@ class GenCtx:
         self.used.add(emp["id"])
         return emp
 
+    def agency(self, cidade: str, fallback: str, exclude: str | None = None) -> str:
+        """An existing agency in the city (so the transfer lands under a real manager), else a fictitious one."""
+        units = sorted({e["unidade"] for e in self.employees if e.get("cidade") == cidade and str(e.get("unidade", "")).startswith("AG-")
+                        and e["unidade"] != exclude})
+        return units[0] if units else fallback
+
     def faixa(self, cargo: str) -> dict:
         return (self.cargos.get(cargo, {}).get("estado_alvo") or {}).get("faixa_salarial") or {"min": 0, "max": 0}
 
@@ -183,7 +189,8 @@ def s_transferencia_mesma_cidade(c: GenCtx):
     e = c.pick(lambda x: x["cidade"] == "São Paulo" and x["cargo"] in ("ESCRITURARIO", "CAIXA"))
     if not e:
         return None
-    return {"eventos": [evt("colaborador.transferido", e["id"], {"unidade": "AG-2001", "cidade": "São Paulo", "uf": "SP", "centro_custo": "CC-AG-2001"}, c, "transferencia_mesma_cidade")],
+    ag = c.agency("São Paulo", "AG-2001", exclude=e["unidade"])
+    return {"eventos": [evt("colaborador.transferido", e["id"], {"unidade": ag, "cidade": "São Paulo", "uf": "SP", "centro_custo": f"CC-{ag}"}, c, "transferencia_mesma_cidade")],
             "preparacao": {e["id"]: {"data_inicio_unidade": add_months(c.today, -12)}}}
 
 
@@ -199,7 +206,8 @@ def s_transferencia_com_anuencia(c: GenCtx):
     e = c.pick(lambda x: x["uf"] == "SP" and x["cargo"] in ("ESCRITURARIO", "CAIXA", "ANALISTA_JR"))
     if not e:
         return None
-    return {"eventos": [evt("colaborador.transferido", e["id"], {"unidade": "AG-4001", "cidade": "Belo Horizonte", "uf": "MG", "anuencia_colaborador": True, "centro_custo": "CC-AG-4001"}, c, "transferencia_outra_base_com_anuencia")],
+    ag = c.agency("Belo Horizonte", "AG-4001")
+    return {"eventos": [evt("colaborador.transferido", e["id"], {"unidade": ag, "cidade": "Belo Horizonte", "uf": "MG", "anuencia_colaborador": True, "centro_custo": f"CC-{ag}"}, c, "transferencia_outra_base_com_anuencia")],
             "preparacao": {e["id"]: {"data_inicio_unidade": add_months(c.today, -12)}}}
 
 
@@ -207,7 +215,7 @@ def s_transferencia_provisoria_confianca(c: GenCtx):
     e = c.pick(lambda x: x["cargo"] == "GERENTE_RELACIONAMENTO" and x["cidade"] != "Recife")
     if not e:
         return None
-    return {"eventos": [evt("colaborador.transferido", e["id"], {"unidade": "AG-5001", "cidade": "Recife", "uf": "PE", "provisoria": True, "anuencia_colaborador": False}, c, "transferencia_provisoria_cargo_confianca")],
+    return {"eventos": [evt("colaborador.transferido", e["id"], {"unidade": c.agency("Recife", "AG-5001"), "cidade": "Recife", "uf": "PE", "provisoria": True, "anuencia_colaborador": False}, c, "transferencia_provisoria_cargo_confianca")],
             "preparacao": {e["id"]: {"data_inicio_unidade": add_months(c.today, -12)}}}
 
 

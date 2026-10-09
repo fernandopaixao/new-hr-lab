@@ -65,6 +65,10 @@ orquestracao:
       parametros: {colaborador_id: "=evento.colaborador_id", dados: "=evento.dados"}
       motivo: Evento de admissão traz os dados do candidato aprovado.
       base_legal: CLT art. 41 (registro do empregado)
+    - operacao: ALTERAR_GESTOR
+      quando: "=(evento.dados.gestor_id or gestor_da_unidade(evento.dados.unidade)) is not None"
+      parametros: {gestor_id: "=evento.dados.gestor_id or gestor_da_unidade(evento.dados.unidade)"}
+      motivo: Todo colaborador entra na hierarquia com um gestor imediato (informado no evento ou o responsável pela unidade).
     - operacao: AGENDAR_EXAME
       parametros: {tipo: ADMISSIONAL}
       motivo: Exame admissional antes do início das atividades.
@@ -186,6 +190,12 @@ elegibilidade:
       tipo: EXCECIONAVEL
       aprovadores: [COMITE]
       explicacao_falha: "Aumento acima de {politica.promocao.aumento_max_percentual}% requer comitê."
+    - id: PRM-HIER
+      descricao: Cargo de destino não fica acima do cargo do gestor imediato
+      expressao: "not gestor or cargo_destino.nivel <= cargo_do_gestor.nivel"
+      tipo: ALERTA
+      base_legal: Política de movimentação interna (estrutura hierárquica)
+      explicacao_falha: "O cargo de destino (nível {cargo_destino.nivel}) fica acima do cargo do gestor imediato {gestor.nome} (nível {cargo_do_gestor.nivel}); revise a estrutura da equipe."
 orquestracao:
   derivar_estado_alvo: true
   operacoes:
@@ -445,9 +455,9 @@ orquestracao:
         centro_custo: "=evento.dados.centro_custo or colaborador.centro_custo"
       motivo: O evento define a nova lotação.
     - operacao: ALTERAR_GESTOR
-      quando: "=evento.dados.gestor_id is not None and evento.dados.gestor_id != colaborador.gestor_id"
-      parametros: {gestor_id: "=evento.dados.gestor_id"}
-      motivo: A nova unidade tem outro gestor imediato.
+      quando: "=(evento.dados.gestor_id or gestor_da_unidade(evento.dados.unidade)) not in [None, colaborador.gestor_id, colaborador.id]"
+      parametros: {gestor_id: "=evento.dados.gestor_id or gestor_da_unidade(evento.dados.unidade)"}
+      motivo: A nova unidade tem outro gestor imediato (informado no evento ou o responsável pela unidade).
     - operacao: ADICIONAR_VERBA
       quando: "=evento.dados.provisoria == True and evento.dados.cidade != colaborador.cidade"
       parametros:
@@ -547,6 +557,12 @@ elegibilidade:
       aprovadores: [JURIDICO]
       base_legal: CLT art. 482
       explicacao_falha: Justa causa sem registro de falta grave e apuração.
+    - id: DSL-HIER
+      descricao: Equipe do desligado tem novo gestor definido
+      expressao: "subordinados_diretos == 0"
+      tipo: ALERTA
+      base_legal: Política de movimentação interna (estrutura hierárquica)
+      explicacao_falha: "{colaborador.nome} é gestor imediato de {subordinados_diretos} pessoa(s); defina o novo gestor da equipe."
 orquestracao:
   derivar_estado_alvo: true
   operacoes:

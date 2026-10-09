@@ -135,7 +135,7 @@ export default function Insights() {
                 <td className="small muted">{dur(t.max_ms)}</td><td className="small muted">{t.n}</td></tr>
             ))}</tbody>
           </table>
-          <p className="small muted">O estágio com p95 destacado é o gargalo. A conferência e a auditoria incluem o tempo do agente de IA; o atraso visual configurado também conta.</p>
+          <p className="small muted">O estágio com p95 destacado é o gargalo. A auditoria e a conferência final incluem o tempo do agente de IA; o atraso visual configurado também conta.</p>
         </div>
         <div className="panel panel-pad">
           <h3 className="mb">Situação dos casos</h3>
@@ -210,7 +210,7 @@ export default function Insights() {
         </div>
         <div className="panel panel-pad col">
           <h3>Agente de IA e regras</h3>
-          <p className="small muted">Cada conferência e cada auditoria comparam a decisão das regras com a recomendação do agente.</p>
+          <p className="small muted">Cada auditoria (antes da execução) e cada conferência final comparam a decisão das regras com a recomendação do agente.</p>
           {agrTotal ? (
             <div className="col">
               <div className="row"><span style={{ width: 230 }}>Concordam</span><span style={{ flex: 1 }}><Bar value={agr.concordam} max={agrTotal} tone="ok" /></span><b>{agr.concordam}</b></div>
@@ -218,7 +218,7 @@ export default function Insights() {
               <div className="row"><span style={{ width: 230 }}>Regras mais rigorosas</span><span style={{ flex: 1 }}><Bar value={agr.regras_mais_rigorosas} max={agrTotal} tone="bad" /></span><b>{agr.regras_mais_rigorosas}</b></div>
               {agr.simulado ? <div className="small muted">{agr.simulado} caso(s) usaram o agente simulado.</div> : null}
             </div>
-          ) : <Empty>Nenhuma conferência ainda.</Empty>}
+          ) : <Empty>Nenhuma auditoria ainda.</Empty>}
           <h3 className="mt">Embeddings dos eventos</h3>
           <div className="row small">
             <Badge tone={idx.estado === 'EM_DIA' ? 'ok' : idx.estado === 'AGUARDANDO_OLLAMA' || idx.estado === 'ERRO' ? 'bad' : 'info'}>{idx.estado || 'sem indexador'}</Badge>

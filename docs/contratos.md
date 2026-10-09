@@ -15,7 +15,7 @@ Os contratos descrevem o comportamento das operações de RH sem código. Há qu
 
 ## Regras
 
-Regras aparecem na norma (`compliance`), no cargo (`elegibilidade_entrada`, `compliance`) e no processo (`elegibilidade.regras`, `conferencia_plano.regras`, `auditoria.verificacoes`). Todas têm o mesmo formato:
+Regras aparecem na norma (`compliance`), no cargo (`elegibilidade_entrada`, `compliance`) e no processo (`elegibilidade.regras`, `conferencia_plano.regras`, `auditoria.verificacoes`). As duas últimas seções são avaliadas juntas no estágio de auditoria, antes da execução. Todas têm o mesmo formato:
 
 ```yaml
 - id: PRM-05
@@ -42,8 +42,10 @@ Em parâmetros de operação, valores de verbas e benefícios e condições `qua
 
 | Nome | Conteúdo |
 | --- | --- |
-| `colaborador` | Cadastro atual. Na conferência e na auditoria, é o estado projetado ou final. |
-| `anterior` | Cadastro antes da execução (conferência e auditoria). |
+| `colaborador` | Cadastro atual. Na auditoria, é o estado projetado pelo plano. |
+| `anterior` | Cadastro antes da execução (auditoria). |
+| `gestor`, `cargo_do_gestor` | Cadastro e contrato de cargo do gestor imediato (vazios no topo da organização). |
+| `subordinados_diretos`, `niveis_acima` | Tamanho da equipe direta e quantos gestores há acima na cadeia. |
 | `evento` | O evento, com `tipo`, `data_efetiva`, `dados` e `colaborador_id`. |
 | `hoje` | Data efetiva do evento (AAAA-MM-DD). |
 | `norma`, `politica` | Parâmetros (`parametros`) da norma e da política vigentes. |
@@ -64,7 +66,8 @@ Em parâmetros de operação, valores de verbas e benefícios e condições `qua
 | `escolaridade_ao_menos(nivel)` | Compara com a escala de escolaridade. |
 | `sindicato_da_uf(uf)` | Código do sindicato da base territorial, pela norma. |
 | `advertencias_ultimos_meses(meses)` | Advertências na janela. |
-| `operacao_executada(codigo)` | Se a operação foi executada no caso (auditoria). |
+| `operacao_executada(codigo)` | Na auditoria, antes da execução: se a operação está no plano. A conferência final depois prova que cada operação planejada tem recibo. |
+| `gestor_da_unidade(unidade)` | Matrícula do responsável pela unidade com nível acima do colaborador, ou vazio. |
 | `cpf_valido(cpf)`, `cpf_em_uso(cpf)` | Dígito verificador e duplicidade entre colaboradores ativos. |
 | `somar_meses(data, n)`, `meses_entre(a, b)`, `dias_entre(a, b)`, `anos_entre(a, b)`, `data(texto)` | Datas. |
 | `cargo(codigo)` | Contrato de um cargo qualquer. |
@@ -149,11 +152,11 @@ orquestracao:
       motivo: Novo salário é o maior entre o proposto, o atual e o mínimo da faixa.
       base_legal: CF art. 7 VI
 conferencia_plano:
-  regras: [...]                      # avaliadas sobre o estado projetado; `anterior` é o estado atual
+  regras: [...]                      # avaliadas na auditoria, sobre o estado projetado; `anterior` é o estado atual
 auditoria:
   sla_horas: 48
   incluir_compliance: true           # soma o compliance da norma e do cargo
-  verificacoes: [...]                # avaliadas sobre o estado final
+  verificacoes: [...]                # também avaliadas antes da execução, sobre o estado projetado
 coletivo:                            # só para eventos coletivos
   gera_evento: cct.reajuste_individual
   selecao: "colaborador.situacao != 'DESLIGADO'"
@@ -169,5 +172,6 @@ Um evento coletivo não altera ninguém diretamente: o gatilho seleciona os cola
 | Reduzir `politica.promocao.meses_minimos_no_cargo` de 12 para 4 | Política | Cenário "Promoção sem interstício" (5 meses no cargo) deixa de pedir exceção |
 | Incluir um item em `estado_alvo.equipamentos` de um cargo | Cargo | Promoções para o cargo provisionam o item (operação derivada); a conformidade aponta quem já está no cargo sem ele |
 | Trocar `PRM-08` (processo disciplinar) de `EXCECIONAVEL` para `BLOQUEANTE` | Processo de promoção | O cenário "Promoção com processo disciplinar" passa a terminar em "Não elegível" |
-| Remover `ENVIAR_ESOCIAL` da orquestração da promoção | Processo de promoção | A conferência do plano (regras ou agente) aponta o eSocial faltando |
+| Remover `ENVIAR_ESOCIAL` da orquestração da promoção | Processo de promoção | A auditoria (regras ou agente) aponta o eSocial faltando antes de executar |
+| Remover `CALCULAR_RESCISAO` da orquestração do desligamento | Processo de desligamento | A auditoria rejeita o plano antes da execução, sem alterar nenhum sistema |
 | Nova versão da norma com `vr_valor_dia` maior e vigência futura | Norma | Eventos com data efetiva antes da vigência usam o valor antigo |

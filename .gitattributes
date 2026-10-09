@@ -1,0 +1,5 @@
+# Scripts de shell precisam de LF mesmo em checkouts no Windows;
+# o atalho .cmd precisa de CRLF.
+*.sh text eol=lf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf

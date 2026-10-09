@@ -74,9 +74,10 @@ pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; white-space: nowrap; }
 .brand .logo { width: 26px; height: 26px; border-radius: 6px; background: var(--text); display: grid; place-items: center; }
 .brand small { color: var(--muted); font-weight: 500; }
-.nav { display: flex; gap: 2px; flex-wrap: wrap; }
+.nav { display: flex; gap: 2px; flex-wrap: nowrap; overflow-x: auto; min-width: 0; }
+@media (max-width: 1640px) { .brand small { display: none; } }
 .nav button {
-  border: 0; background: transparent; color: var(--muted); padding: 7px 11px; border-radius: 6px; cursor: pointer; font: inherit;
+  border: 0; background: transparent; color: var(--muted); padding: 7px 10px; border-radius: 6px; cursor: pointer; font: inherit; white-space: nowrap;
 }
 .nav button:hover { background: var(--panel-2); color: var(--text); }
 .nav button.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
@@ -250,3 +251,4 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .diff-new { color: var(--ok); }
 details > summary { cursor: pointer; color: var(--accent); }
 .chip { display: inline-block; padding: 1px 7px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; margin: 1px 3px 1px 0; background: var(--panel-2); }
+.diff-old .muted, .diff-new .muted { text-decoration: none; color: var(--muted); }

@@ -68,6 +68,11 @@ function StageTrack({ c, meta, onPick }) {
 const STAGE_TAB = { intake: 'evento', eligibility: 'elegibilidade', planning: 'plano', plan_review: 'conferencia', execution: 'execucao', audit: 'auditoria' }
 
 export default function CaseDetail({ id, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
   const { meta, onLive, toast, openCase } = useApp()
   const [data, setData] = useState(null)
   const [tab, setTab] = useState('resumo')

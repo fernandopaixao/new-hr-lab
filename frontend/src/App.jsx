@@ -12,13 +12,13 @@ import Logs from './pages/Logs.jsx'
 import Settings from './pages/Settings.jsx'
 
 const PAGES = [
-  ['linha', 'Linha de produção'],
-  ['cenarios', 'Cenários e eventos'],
+  ['linha', 'Linha'],
+  ['cenarios', 'Cenários'],
   ['aprovacoes', 'Aprovações'],
   ['colaboradores', 'Colaboradores'],
   ['contratos', 'Contratos'],
   ['prateleira', 'Prateleira'],
-  ['log', 'Log e decisões'],
+  ['log', 'Log'],
   ['config', 'Configurações'],
 ]
 
@@ -108,7 +108,7 @@ export default function App() {
           <button className={`btn sm ${paused ? 'on' : ''}`} onClick={togglePause}>{paused ? 'Retomar linha' : 'Pausar linha'}</button>
           <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <span>Persona</span>
-            <select value={persona} onChange={(e) => setPersona(e.target.value)}>
+            <select value={persona} onChange={(e) => setPersona(e.target.value)} style={{ width: 190 }}>
               {Object.entries(meta.personas).map(([k, p]) => <option key={k} value={k}>{p.nome} ({p.pessoa})</option>)}
             </select>
           </label>

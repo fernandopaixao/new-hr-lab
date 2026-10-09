@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react'
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react'
 
 export const AppCtx = createContext(null)
 export const useApp = () => useContext(AppCtx)
@@ -87,6 +87,11 @@ export function Empty({ children }) {
 }
 
 export function Modal({ title, onClose, children, footer }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopImmediatePropagation(); onClose() } }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onClose])
   return (
     <div className="modal" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
       <div className="panel">
@@ -171,7 +176,7 @@ export function useToasts() {
   const [toasts, setToasts] = useState([])
   const push = useCallback((text, tone = '') => {
     const id = Math.random()
-    setToasts((t) => [...t, { id, text, tone }])
+    setToasts((t) => [...t.slice(-2), { id, text, tone }])
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4500)
   }, [])
   const view = (
@@ -183,14 +188,30 @@ export function useToasts() {
 export function DiffTable({ diff }) {
   if (!diff || !diff.length) return <Empty>Sem alterações.</Empty>
   const fmt = (v) => (typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v ?? '-'))
+  const cell = { maxWidth: 420, wordBreak: 'break-word' }
+  const listDiff = (a, b) => {
+    const ka = new Set(a.map((x) => JSON.stringify(x)))
+    const kb = new Set(b.map((x) => JSON.stringify(x)))
+    return [a.filter((x) => !kb.has(JSON.stringify(x))), b.filter((x) => !ka.has(JSON.stringify(x)))]
+  }
   return (
     <table className="tbl">
       <thead><tr><th>Campo</th><th>Antes</th><th>Depois</th></tr></thead>
-      <tbody>{diff.map((d, i) => (
-        <tr key={i}><td><b>{d.campo}</b></td>
-          <td className="small mono diff-old" style={{ maxWidth: 420, wordBreak: 'break-word' }}>{fmt(d.antes)}</td>
-          <td className="small mono diff-new" style={{ maxWidth: 420, wordBreak: 'break-word' }}>{fmt(d.depois)}</td></tr>
-      ))}</tbody>
+      <tbody>{diff.map((d, i) => {
+        if (Array.isArray(d.antes) && Array.isArray(d.depois)) {
+          const [removed, added] = listDiff(d.antes, d.depois)
+          return (
+            <tr key={i}><td><b>{d.campo}</b><div className="small muted">{d.antes.length} para {d.depois.length} itens</div></td>
+              <td className="small mono diff-old" style={cell}>{removed.length ? removed.map((x, j) => <div key={j}>{fmt(x)}</div>) : <span className="muted">nada removido</span>}</td>
+              <td className="small mono diff-new" style={cell}>{added.length ? added.map((x, j) => <div key={j}>{fmt(x)}</div>) : <span className="muted">nada incluído</span>}</td></tr>
+          )
+        }
+        return (
+          <tr key={i}><td><b>{d.campo}</b></td>
+            <td className="small mono diff-old" style={cell}>{fmt(d.antes)}</td>
+            <td className="small mono diff-new" style={cell}>{fmt(d.depois)}</td></tr>
+        )
+      })}</tbody>
     </table>
   )
 }

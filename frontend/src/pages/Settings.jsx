@@ -27,9 +27,9 @@ export default function Settings() {
     try { setVals((await api.put('/settings', vals)).valores); toast('Configurações salvas e registradas no log') } catch (e) { toast(e.message, 'bad') }
   }
   const check = async () => { setHealth(await api.post('/agent/check')); reloadStats() }
-  const pull = async () => {
+  const pull = async (modelo) => {
     setBusy(true)
-    try { await api.post('/agent/pull'); toast('Modelo baixado'); check() } catch (e) { toast(e.message, 'bad') } finally { setBusy(false) }
+    try { await api.post('/agent/pull', modelo ? { modelo } : {}); toast(`Modelo ${modelo || vals.ollama_model} baixado`); check() } catch (e) { toast(e.message, 'bad') } finally { setBusy(false) }
   }
   return (
     <div>
@@ -52,6 +52,16 @@ export default function Settings() {
               <option value="SEMPRE">Sempre (todo plano e toda auditoria passam por uma pessoa)</option>
             </select>
           </label>
+          <h3 className="mt">Embeddings e perguntas</h3>
+          <div className="form-grid">
+            <label className="field" title="Modelo do Ollama que gera os embeddings dos eventos. Trocar o modelo reindexa tudo.">Modelo de embedding
+              <input value={vals.embedding_model} onChange={(e) => set('embedding_model', e.target.value)} /></label>
+            <label className="field" title="Vazio usa o mesmo modelo do agente de conferência.">Modelo do agente de perguntas
+              <input value={vals.ask_model} placeholder={vals.ollama_model} onChange={(e) => set('ask_model', e.target.value)} /></label>
+            <label className="field" title="Quantos eventos parecidos entram como evidência em cada resposta.">Documentos por resposta
+              <input type="number" value={vals.ask_top_k} onChange={(e) => set('ask_top_k', Number(e.target.value))} /></label>
+          </div>
+          <label className="check"><input type="checkbox" checked={vals.indexing_enabled} onChange={(e) => set('indexing_enabled', e.target.checked)} /> Indexar eventos continuamente</label>
           <div className="row"><button className="btn primary" onClick={save}>Salvar</button></div>
         </div>
         <div className="col">
@@ -60,13 +70,15 @@ export default function Settings() {
             <dl className="kv">
               <dt>URL</dt><dd className="mono">{health?.url}</dd>
               <dt>Modelo</dt><dd>{health?.modelo} {health?.modelo_disponivel ? <Badge tone="ok">instalado</Badge> : <Badge tone="warn">não instalado</Badge>}</dd>
+              <dt>Embedding</dt><dd>{health?.modelo_embedding} {health?.modelo_embedding_disponivel ? <Badge tone="ok">instalado</Badge> : <Badge tone="warn">não instalado</Badge>}</dd>
               <dt>Modelos no servidor</dt><dd className="small">{(health?.modelos || []).join(', ') || '-'}</dd>
               <dt>Verificado</dt><dd>{dateTime(health?.verificado_em)}</dd>
               {health?.erro ? <><dt>Erro</dt><dd className="small" style={{ color: 'var(--bad)' }}>{health.erro}</dd></> : null}
             </dl>
             <div className="row">
               <button className="btn" onClick={check}>Verificar agora</button>
-              <button className="btn" onClick={pull} disabled={busy}>{busy ? 'Baixando modelo...' : 'Baixar modelo no Ollama'}</button>
+              <button className="btn" onClick={() => pull()} disabled={busy}>{busy ? 'Baixando...' : 'Baixar modelo do agente'}</button>
+              <button className="btn" onClick={() => pull(vals.embedding_model)} disabled={busy}>Baixar modelo de embedding</button>
               <button className="btn" onClick={async () => { const r = await api.post('/agent/cache/clear'); toast(`${r.removidos} respostas removidas do cache`) }}>Limpar cache</button>
             </div>
             <div className="small muted">Estatísticas: {stats?.agente?.chamadas || 0} chamadas, média {stats?.agente?.duracao_media_ms ?? '-'} ms, recomendações {JSON.stringify(stats?.agente?.recomendacoes || {})}.</div>
@@ -82,7 +94,7 @@ export default function Settings() {
           </div>
           <div className="panel panel-pad col">
             <h3>Reiniciar laboratório</h3>
-            <p className="small muted">Limpa casos, aprovações, filas e log. Opcionalmente gera um novo time.</p>
+            <p className="small muted">Limpa casos, aprovações, filas, log e embeddings. Opcionalmente gera um novo time.</p>
             <div className="row">
               <button className="btn danger" onClick={async () => { await api.post('/reset', {}); toast('Laboratório reiniciado'); reloadStats() }}>Limpar execução</button>
               <button className="btn danger" onClick={async () => { await api.post('/reset', { colaboradores: true }); toast('Laboratório reiniciado com novo time'); reloadStats() }}>Limpar e gerar novo time</button>

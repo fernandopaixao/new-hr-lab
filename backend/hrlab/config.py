@@ -34,6 +34,11 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "human_review_mode": os.getenv("HUMAN_REVIEW_MODE", "SE_REPROVADO"),
     "stage_delay_ms": int(os.getenv("STAGE_DELAY_MS", "700")),
     "failure_rate_percent": float(os.getenv("FAILURE_RATE_PERCENT", "0")),
+    # Phase 2: embeddings of every event and the natural language agent.
+    "embedding_model": os.getenv("EMBEDDING_MODEL", "nomic-embed-text"),
+    "indexing_enabled": _bool("INDEXING_ENABLED", True),
+    "ask_model": os.getenv("ASK_MODEL", ""),  # empty: same model as the review agent
+    "ask_top_k": int(os.getenv("ASK_TOP_K", "8")),
 }
 
 SETTING_TYPES = {k: type(v) for k, v in DEFAULT_SETTINGS.items()}

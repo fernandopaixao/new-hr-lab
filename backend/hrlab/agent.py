@@ -148,6 +148,9 @@ async def check_health(store: Store, settings: dict) -> dict:
             resp.raise_for_status()
             models = [m.get("name") for m in resp.json().get("models", [])]
         available = model in models or f"{model}:latest" in models
+        emb = settings.get("embedding_model") or ""
+        health["modelo_embedding"] = emb
+        health["modelo_embedding_disponivel"] = bool(emb) and (emb in models or f"{emb}:latest" in models)
         health.update({"ok": available, "online": True, "modelos": models, "modelo_disponivel": available,
                        "erro": None if available else f"modelo {model} não encontrado; use 'Baixar modelo' nas configurações"})
     except Exception as exc:  # noqa: BLE001
@@ -156,10 +159,10 @@ async def check_health(store: Store, settings: dict) -> dict:
     return health
 
 
-async def pull_model(settings: dict) -> dict:
+async def pull_model(settings: dict, model: str | None = None) -> dict:
     url = settings["ollama_base_url"].rstrip("/")
     async with httpx.AsyncClient(timeout=None) as client:
-        resp = await client.post(f"{url}/api/pull", json={"model": settings["ollama_model"], "stream": False})
+        resp = await client.post(f"{url}/api/pull", json={"model": model or settings["ollama_model"], "stream": False})
         resp.raise_for_status()
         return resp.json()
 
@@ -198,6 +201,38 @@ async def _call_ollama(settings: dict, prompt: str) -> tuple[dict, dict]:
     }
     parsed = json.loads(content)
     return parsed, meta
+
+
+async def chat_json(settings: dict, system: str, prompt: str, schema: dict, *, model: str | None = None,
+                    num_predict: int | None = None) -> tuple[dict, dict]:
+    """Generic structured call used by the natural language agent.
+
+    Raises AgentUnavailable on connection errors and json.JSONDecodeError on an
+    invalid answer, so callers decide between fallback and retry.
+    """
+    url = settings["ollama_base_url"].rstrip("/")
+    body = {
+        "model": model or settings["ollama_model"],
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+        "stream": False,
+        "format": schema,
+        "keep_alive": settings["ollama_keep_alive"],
+        "options": {"temperature": settings["ollama_temperature"], "num_ctx": settings["ollama_num_ctx"],
+                    "num_predict": num_predict or settings["ollama_num_predict"], "seed": 42},
+    }
+    started = time.time()
+    try:
+        async with _get_semaphore(int(settings["ollama_max_concurrency"])):
+            async with httpx.AsyncClient(timeout=settings["ollama_timeout_s"]) as client:
+                resp = await client.post(f"{url}/api/chat", json=body)
+                resp.raise_for_status()
+                data = resp.json()
+    except (httpx.HTTPError, OSError) as exc:
+        raise AgentUnavailable(f"{type(exc).__name__}: {exc}") from exc
+    content = (data.get("message") or {}).get("content") or ""
+    meta = {"modelo": body["model"], "duracao_ms": int((time.time() - started) * 1000), "eval_count": data.get("eval_count"),
+            "prompt_eval_count": data.get("prompt_eval_count"), "resposta_bruta": content}
+    return json.loads(content), meta
 
 
 def _normalize(parsed: dict) -> dict:

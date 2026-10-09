@@ -22,6 +22,7 @@ x-backend: &backend
     DATA_DIR: /data
     OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
+    EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
   extra_hosts:
     - "host.docker.internal:host-gateway"
   volumes:
@@ -55,6 +56,12 @@ services:
     <<: *backend
     command: ["python", "-m", "hrlab.worker"]
 
+  # Embeds every event (case narratives and decisions) for semantic search
+  # and for the natural language agent. Keep a single instance.
+  indexer:
+    <<: *backend
+    command: ["python", "-m", "hrlab.indexer"]
+
   frontend:
     build: ./frontend
     restart: unless-stopped
@@ -80,7 +87,7 @@ services:
       - ollama
     environment:
       OLLAMA_HOST: http://ollama:11434
-    entrypoint: ["/bin/sh", "-c", "sleep 5 && ollama pull ${OLLAMA_MODEL:-qwen2.5:7b}"]
+    entrypoint: ["/bin/sh", "-c", "sleep 5 && ollama pull ${OLLAMA_MODEL:-qwen2.5:7b} && ollama pull ${EMBEDDING_MODEL:-nomic-embed-text}"]
     restart: "no"
 
 volumes:

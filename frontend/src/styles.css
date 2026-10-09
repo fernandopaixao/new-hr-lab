@@ -252,3 +252,22 @@ table.tbl { width: 100%; border-collapse: collapse; }
 details > summary { cursor: pointer; color: var(--accent); }
 .chip { display: inline-block; padding: 1px 7px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; margin: 1px 3px 1px 0; background: var(--panel-2); }
 .diff-old .muted, .diff-new .muted { text-decoration: none; color: var(--muted); }
+
+/* phase 2: visibility and questions */
+.mb-s { margin-bottom: 6px; }
+.hbar { height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden; margin: 3px 0; }
+.hbar-fill { height: 100%; border-radius: 4px; background: var(--accent); }
+.hbar-fill.ok { background: var(--ok); }
+.hbar-fill.warn { background: var(--warn); }
+.hbar-fill.bad { background: var(--bad); }
+.tbl.heat td.h-ok { background: var(--ok-soft); font-weight: 600; text-align: center; }
+.tbl.heat td.h-warn { background: var(--warn-soft); font-weight: 600; text-align: center; }
+.ask-box { display: flex; gap: 8px; }
+.ask-box textarea { flex: 1; min-height: 64px; resize: vertical; }
+.answer { white-space: pre-wrap; line-height: 1.55; font-size: 14.5px; }
+.suggest { display: flex; flex-wrap: wrap; gap: 6px; }
+.suggest button { border: 1px solid var(--border); background: var(--panel); border-radius: 14px; padding: 4px 10px; cursor: pointer; font: inherit; font-size: 12.5px; color: var(--text); }
+.suggest button:hover { background: var(--accent-soft); border-color: var(--accent); }
+.doc { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }
+.doc pre { font-size: 12px; color: var(--muted); max-height: 160px; overflow: auto; }
+.score { font-family: var(--mono); font-size: 11px; color: var(--muted); }

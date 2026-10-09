@@ -10,9 +10,13 @@ import Shelf from './pages/Shelf.jsx'
 import Scenarios from './pages/Scenarios.jsx'
 import Logs from './pages/Logs.jsx'
 import Settings from './pages/Settings.jsx'
+import Insights from './pages/Insights.jsx'
+import Ask from './pages/Ask.jsx'
 
 const PAGES = [
   ['linha', 'Linha'],
+  ['visao', 'Visão'],
+  ['perguntar', 'Perguntar'],
   ['cenarios', 'Cenários'],
   ['aprovacoes', 'Aprovações'],
   ['colaboradores', 'Colaboradores'],
@@ -101,20 +105,21 @@ export default function App() {
             ))}
           </nav>
           <div className="spacer" />
-          <span title={health?.erro || ''}>
-            {health?.ok ? <Badge tone="ok">IA: {health.modelo}</Badge>
+          <span title={health?.ok ? `Agente: ${health.modelo}` : (health?.erro || '')}>
+            {health?.ok ? <Badge tone="ok">IA ok</Badge>
               : <Badge tone="warn">IA indisponível</Badge>}
           </span>
           <button className={`btn sm ${paused ? 'on' : ''}`} onClick={togglePause}>{paused ? 'Retomar linha' : 'Pausar linha'}</button>
           <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <span>Persona</span>
-            <select value={persona} onChange={(e) => setPersona(e.target.value)} style={{ width: 190 }}>
+            <select value={persona} onChange={(e) => setPersona(e.target.value)} style={{ width: 175 }} title="Persona: quem está usando a interface">
               {Object.entries(meta.personas).map(([k, p]) => <option key={k} value={k}>{p.nome} ({p.pessoa})</option>)}
             </select>
           </label>
         </header>
         <main className="main">
           {page === 'linha' && <Line />}
+          {page === 'visao' && <Insights />}
+          {page === 'perguntar' && <Ask />}
           {page === 'cenarios' && <Scenarios />}
           {page === 'aprovacoes' && <Approvals />}
           {page === 'colaboradores' && <Employees />}

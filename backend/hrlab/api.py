@@ -14,7 +14,7 @@ from fastapi import Body, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, StreamingResponse
 
-from . import agent, engine, logbook as log, shelf
+from . import agent, ask, embeddings as emb, engine, facts as factsmod, indexer, logbook as log, shelf
 from .config import DEFAULT_SETTINGS
 from .context import Ctx
 from .contracts import ContractError, ContractRepo, from_yaml, to_yaml, validate
@@ -137,6 +137,9 @@ async def put_settings(patch: dict = Body(...), x_persona: str = Header("OPERADO
     changes = {k: {"antes": before.get(k), "depois": v} for k, v in after.items() if before.get(k) != v}
     await log.write(store, log.CONFIG_ALTERADA, "Configurações alteradas: " + ", ".join(f"{k}={v['depois']}" for k, v in changes.items()),
                     ator=f"persona:{x_persona}", dados=changes)
+    if "embedding_model" in changes:
+        # vectors of different models are not comparable: re-embed everything
+        await indexer.mark_all(store)
     return {"valores": after, "padroes": DEFAULT_SETTINGS}
 
 
@@ -151,9 +154,9 @@ async def agent_check() -> dict:
 
 
 @app.post("/api/agent/pull")
-async def agent_pull() -> dict:
+async def agent_pull(body: dict = Body(default={})) -> dict:
     try:
-        return await agent.pull_model(await store.settings())
+        return await agent.pull_model(await store.settings(), body.get("modelo"))
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, f"falha ao baixar o modelo: {exc}") from exc
 
@@ -656,6 +659,7 @@ async def stats() -> dict:
 @app.post("/api/reset")
 async def reset(body: dict = Body(default={}), x_persona: str = Header("OPERADOR")) -> dict:
     await store.reset_runtime()
+    await emb.clear(store)
     await store.ensure_groups(STAGE_KEYS)
     if body.get("colaboradores"):
         await _generate(int(body.get("tamanho", 80)), int(body.get("semente", 42)), float(body.get("desvio_percentual", 15)), replace=True,
@@ -663,6 +667,125 @@ async def reset(body: dict = Body(default={}), x_persona: str = Header("OPERADOR
     await log.write(store, log.CONTROLE, "Laboratório reiniciado: casos, aprovações, filas e log limpos.", ator=f"persona:{x_persona}")
     await store.publish({"tipo": "reset"})
     return {"ok": True}
+
+
+# ------------------------------------------------------------- phase 2: visibility, embeddings, questions
+async def load_facts(limit: int = 5000) -> list[dict]:
+    cases = await store.list_cases(limit=limit)
+    ap_ids = {a for c in cases for a in (c.get("aprovacoes") or []) if isinstance(a, str)}
+    approvals = {}
+    if ap_ids:
+        raws = await store.r.mget([f"{P}:approval:{a}" for a in ap_ids])
+        approvals = {json.loads(x)["id"]: json.loads(x) for x in raws if x}
+    employees = {e["id"]: e for e in await store.list_employees()}
+    return [factsmod.case_fact(c, approvals, employees.get(c.get("colaborador_id"))) for c in cases]
+
+
+@app.get("/api/insights")
+async def insights(periodo_horas: float = 0, balde_min: int = 5, baldes: int = 24) -> dict:
+    facts = await load_facts()
+    if periodo_horas:
+        facts = factsmod.apply_filters(facts, {"periodo_horas": periodo_horas})
+    ctx = await compliance_ctx()
+    comp = [engine.employee_compliance(e, ctx) for e in await store.list_employees()]
+    result = factsmod.insights(facts, queues=await store.queue_stats(STAGE_KEYS),
+                               pending_approvals=await store.list_approvals(pending_only=True), employees_compliance=comp,
+                               bucket_min=max(1, balde_min), buckets=max(4, min(baldes, 96)))
+    result["indice"] = await emb.status(store)
+    result["agente_saude"] = await store.get_json(f"{P}:agent:health")
+    return result
+
+
+@app.get("/api/facts")
+async def list_facts(evento_tipo: str | None = None, status: str | None = None, colaborador_id: str | None = None,
+                     regra_falha: str | None = None, periodo_horas: float = 0, agrupar_por: str | None = None, limite: int = 200) -> dict:
+    facts = await load_facts()
+    filtros = {"evento_tipo": evento_tipo, "status": status, "colaborador_id": colaborador_id, "regra_falha": regra_falha,
+               "periodo_horas": periodo_horas}
+    sel = factsmod.apply_filters(facts, filtros)
+    out = {"total": len(sel), "fatos": sel[:limite]}
+    if agrupar_por:
+        if agrupar_por not in factsmod.GROUP_FIELDS:
+            raise HTTPException(400, f"agrupar_por deve ser um de {factsmod.GROUP_FIELDS}")
+        out["agrupamento"] = factsmod.group_count(sel, agrupar_por, 50)
+    return out
+
+
+@app.get("/api/metrics", response_class=PlainTextResponse)
+async def metrics() -> str:
+    """Prometheus exposition, for Grafana or any scraper."""
+    facts = await load_facts()
+    lines = ["# HELP hrlab_cases Casos por status", "# TYPE hrlab_cases gauge"]
+    for row in factsmod.group_count(facts, "status", 100):
+        lines.append(f'hrlab_cases{{status="{row["valor"]}"}} {row["quantidade"]}')
+    lines += ["# HELP hrlab_cases_by_event Casos por tipo de evento", "# TYPE hrlab_cases_by_event gauge"]
+    for row in factsmod.group_count(facts, "evento_tipo", 100):
+        lines.append(f'hrlab_cases_by_event{{evento="{row["valor"]}"}} {row["quantidade"]}')
+    lines += ["# HELP hrlab_queue_messages Mensagens por fila", "# TYPE hrlab_queue_messages gauge"]
+    for stage, q in (await store.queue_stats(STAGE_KEYS)).items():
+        lines.append(f'hrlab_queue_messages{{estagio="{stage}",tipo="pendentes"}} {q.get("pendentes", 0)}')
+        lines.append(f'hrlab_queue_messages{{estagio="{stage}",tipo="atraso"}} {q.get("atraso") or 0}')
+        lines.append(f'hrlab_queue_consumers{{estagio="{stage}"}} {q.get("consumidores", 0)}')
+    lines += ["# HELP hrlab_stage_duration_ms Duração por estágio", "# TYPE hrlab_stage_duration_ms summary"]
+    for s in STAGE_KEYS:
+        vals = [f["etapas"][s]["duracao_ms"] for f in facts if f["etapas"][s]["duracao_ms"] is not None]
+        for qn in (50, 95):
+            v = factsmod.percentile(vals, qn)
+            if v is not None:
+                lines.append(f'hrlab_stage_duration_ms{{estagio="{s}",quantile="{qn / 100}"}} {v}')
+        lines.append(f'hrlab_stage_duration_ms_count{{estagio="{s}"}} {len(vals)}')
+    health = await store.get_json(f"{P}:agent:health") or {}
+    st = await emb.status(store)
+    lines += [
+        f"hrlab_approvals_pending {await store.r.scard(f'{P}:approvals:pending')}",
+        f"hrlab_agent_up {1 if health.get('ok') else 0}",
+        f"hrlab_index_documents {st['documentos']}",
+        f"hrlab_index_dirty {st['pendentes']}",
+        f"hrlab_index_simulated {st['simulados']}",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+@app.get("/api/index/status")
+async def index_status() -> dict:
+    return await emb.status(store)
+
+
+@app.post("/api/index/rebuild")
+async def index_rebuild(body: dict = Body(default={}), x_persona: str = Header("OPERADOR")) -> dict:
+    if body.get("limpar"):
+        await emb.clear(store)
+    n = await indexer.mark_all(store)
+    await log.write(store, log.CONTROLE, f"Reindexação de embeddings solicitada: {n} documento(s) marcados.", ator=f"persona:{x_persona}")
+    return {"marcados": n}
+
+
+@app.post("/api/search")
+async def semantic_search(body: dict = Body(...)) -> dict:
+    texto = str(body.get("texto") or "").strip()
+    if not texto:
+        raise HTTPException(400, "informe o texto da busca")
+    try:
+        return await emb.search(store, texto, k=int(body.get("k", 10)), filtros=body.get("filtros") or {})
+    except agent.AgentUnavailable as exc:
+        raise HTTPException(503, f"Ollama indisponível para gerar o embedding da busca ({exc}). "
+                                 "Ative o modo simulado nas configurações para buscar sem IA.") from exc
+
+
+@app.post("/api/ask")
+async def ask_question(body: dict = Body(...), x_persona: str = Header("OPERADOR")) -> dict:
+    pergunta = str(body.get("pergunta") or "").strip()
+    if len(pergunta) < 3:
+        raise HTTPException(400, "escreva uma pergunta")
+    try:
+        return await ask.answer(store, pergunta, await load_facts(), await repo.event_types(), persona=x_persona)
+    except agent.AgentUnavailable as exc:
+        raise HTTPException(503, f"Ollama indisponível ({exc}). Ative o modo simulado nas configurações para responder sem IA.") from exc
+
+
+@app.get("/api/ask/history")
+async def ask_history(limite: int = 30) -> list[dict]:
+    return await ask.history(store, limite)
 
 
 # ----------------------------------------------------------------- stream

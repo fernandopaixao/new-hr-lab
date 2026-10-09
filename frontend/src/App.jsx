@@ -13,6 +13,7 @@ import Settings from './pages/Settings.jsx'
 import Insights from './pages/Insights.jsx'
 import Ask from './pages/Ask.jsx'
 import Setup from './pages/Setup.jsx'
+import Validity from './pages/Validity.jsx'
 
 const PAGES = [
   ['linha', 'Linha'],
@@ -21,11 +22,14 @@ const PAGES = [
   ['cenarios', 'Cenários'],
   ['aprovacoes', 'Aprovações'],
   ['colaboradores', 'Colaboradores'],
+  ['vigencias', 'Vigências'],
   ['contratos', 'Contratos'],
   ['prateleira', 'Prateleira'],
   ['log', 'Log'],
   ['config', 'Configurações'],
 ]
+
+const fmtIso = (iso) => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '')
 
 export default function App() {
   const [meta, setMeta] = useState(null)
@@ -61,6 +65,8 @@ export default function App() {
         setCases((prev) => ({ ...prev, [msg.case.id]: msg.case }))
       } else if (msg.tipo === 'reset') {
         loadCases()
+      } else if (msg.tipo === 'clock') {
+        loadStats()
       }
       listeners.current.forEach((fn) => fn(msg))
     })
@@ -80,6 +86,8 @@ export default function App() {
   const ctx = useMemo(() => ({
     meta, persona, setPersona, cases, stats, toast, onLive, openCase: setOpenCase, go: setPage, reloadCases: loadCases, reloadStats: loadStats, tick,
     openSetup: () => setSetup('reaberto'),
+    // business date: the simulated clock when set, else the real calendar
+    hoje: stats?.relogio?.hoje || meta?.hoje, relogio: stats?.relogio || meta?.relogio,
   }), [meta, persona, cases, stats, toast, onLive, loadCases, loadStats, tick])
 
   if (!meta || setup === null) return <div className="empty">Carregando laboratório...</div>
@@ -88,6 +96,7 @@ export default function App() {
   const pending = stats?.aprovacoes_pendentes || 0
   const health = stats?.agente?.saude
   const paused = stats?.controle?.paused
+  const relogio = stats?.relogio || meta.relogio
 
   const togglePause = async () => {
     await api.post('/control', { paused: !paused })
@@ -112,6 +121,10 @@ export default function App() {
             ))}
           </nav>
           <div className="spacer" />
+          <button className={`btn sm clock-chip ${relogio?.simulado ? 'on' : ''}`} onClick={() => setPage('vigencias')}
+            title={relogio?.simulado ? `Data simulada pelo relógio do laboratório; o calendário real está em ${fmtIso(relogio.data_real)}` : 'Data do calendário real'}>
+            {fmtIso(relogio?.hoje || meta.hoje)}
+          </button>
           <span title={health?.ok ? `Agente: ${health.provedor_nome || 'Ollama'}, ${health.modelo}` : (health?.erro || '')}>
             {health?.ok ? <Badge tone="ok">IA ok</Badge>
               : <Badge tone="warn">IA indisponível</Badge>}
@@ -130,6 +143,7 @@ export default function App() {
           {page === 'cenarios' && <Scenarios />}
           {page === 'aprovacoes' && <Approvals />}
           {page === 'colaboradores' && <Employees />}
+          {page === 'vigencias' && <Validity />}
           {page === 'contratos' && <Contracts />}
           {page === 'prateleira' && <Shelf />}
           {page === 'log' && <Logs />}

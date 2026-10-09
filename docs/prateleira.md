@@ -23,6 +23,20 @@ Catálogo gerado a partir de `backend/hrlab/shelf.py`. Cada operação declara o
 - `INCLUIR_DEPENDENTE`: Inclui dependente no cadastro.
 - `ENCERRAR_VINCULO`: Registra o encerramento do contrato de trabalho.
 
+## DESENVOLVIMENTO
+
+| Código | Nome | Parâmetros (* obrigatório) | Altera | Ordem | Compensável |
+| --- | --- | --- | --- | --- | --- |
+| `INCLUIR_PROGRAMA` | Incluir em programa com vigência | `programa`* (texto), `nome` (texto), `inicio`* (data), `fim`* (data), `aviso_dias` (numero), `concessoes` (objeto), `evento_aviso` (texto), `evento_vencimento` (texto) | programas, historico | 25 | sim |
+| `RENOVAR_PROGRAMA` | Renovar programa | `programa`* (texto), `novo_fim`* (data), `motivo` (texto) | programas, historico | 26 | sim |
+| `REGISTRAR_AVISO_PROGRAMA` | Registrar aviso de vencimento | `programa`* (texto) | programas | 27 | sim |
+| `ENCERRAR_PROGRAMA` | Encerrar programa | `programa`* (texto), `status`* (texto), `motivo` (texto) | programas, historico | 28 | sim |
+
+- `INCLUIR_PROGRAMA`: Registra o colaborador em um programa com início oficial, fim e eventos de aviso e vencimento agendados.
+- `RENOVAR_PROGRAMA`: Estende a vigência de um programa ativo; aviso e vencimento são reagendados para o novo fim.
+- `REGISTRAR_AVISO_PROGRAMA`: Marca que o aviso de vencimento do programa foi enviado.
+- `ENCERRAR_PROGRAMA`: Encerra um programa ativo por vencimento (EXPIRADO) ou antecipadamente (ENCERRADO). Com programa '*', encerra todos.
+
 ## FOLHA
 
 | Código | Nome | Parâmetros (* obrigatório) | Altera | Ordem | Compensável |

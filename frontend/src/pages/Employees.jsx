@@ -9,11 +9,11 @@ const ESTAB = ['GESTANTE', 'ACIDENTE_TRABALHO', 'CIPA', 'DIRIGENTE_SINDICAL', 'P
 const UFS = ['SP', 'RJ', 'ES', 'MG', 'RS', 'SC', 'PR', 'PE', 'BA', 'CE', 'DF', 'GO']
 
 export function EventComposer({ initialType, colaboradorId, onClose }) {
-  const { meta, toast, openCase } = useApp()
+  const { meta, hoje, toast, openCase } = useApp()
   const [tipo, setTipo] = useState(initialType || meta.tipos_evento[0]?.evento)
   const [dados, setDados] = useState('')
   const [colab, setColab] = useState(colaboradorId || '')
-  const [dataEf, setDataEf] = useState(meta.hoje)
+  const [dataEf, setDataEf] = useState(hoje)
   const [debug, setDebug] = useState(false)
   useEffect(() => { setDados(JSON.stringify(meta.templates_evento[tipo] || {}, null, 2)) }, [tipo, meta])
   const send = async () => {
@@ -54,7 +54,7 @@ const ESCOLARIDADE_LABEL = {
 const REGIME_LABEL = { NORMAL_224: 'jornada bancária', CONFIANCA_224_2: 'cargo de confiança', GESTAO_62_II: 'cargo de gestão, sem controle de jornada' }
 const SITUACAO_LABEL = { ATIVO: 'Ativo', AFASTADO: 'Afastado', GARDEN_LEAVE: 'Em garden leave', DESLIGADO: 'Desligado' }
 const SITUACAO_TONE = { ATIVO: 'ok', AFASTADO: 'warn', GARDEN_LEAVE: 'violet', DESLIGADO: 'bad' }
-const HIST_LABEL = { ADMISSAO: 'Admissão', CARGO: 'Mudança de cargo', LOTACAO: 'Mudança de lotação', SITUACAO: 'Situação', SINDICATO: 'Sindicato' }
+const HIST_LABEL = { ADMISSAO: 'Admissão', CARGO: 'Mudança de cargo', LOTACAO: 'Mudança de lotação', SITUACAO: 'Situação', SINDICATO: 'Sindicato', PROGRAMA: 'Programa' }
 
 const humanize = (code) => {
   const t = String(code || '').replace(/_/g, ' ').toLowerCase()
@@ -130,11 +130,70 @@ function careerTimeline(e, cargoNames) {
   return items.filter((i) => i.data).sort((a, b) => String(b.data).localeCompare(String(a.data)))
 }
 
+const PROGRAMA_STATUS = { ATIVO: ['ok', 'Vigente'], EXPIRADO: ['', 'Vencido'], ENCERRADO: ['warn', 'Encerrado antes do fim'] }
+
+function remaining(dias) {
+  if (dias === null || dias === undefined) return ''
+  if (dias <= 0) return 'vence hoje'
+  if (dias < 60) return `faltam ${dias} dia${dias === 1 ? '' : 's'}`
+  const m = Math.floor(dias / 30.4)
+  return `faltam cerca de ${m} meses`
+}
+
+// Programs with a validity period: what they grant, how much time is left and what the agenda will emit.
+function Programs({ data }) {
+  const progs = [...(data.programas || [])].sort((a, b) => (a.status === 'ATIVO' ? -1 : 1) - (b.status === 'ATIVO' ? -1 : 1) || String(b.inicio).localeCompare(String(a.inicio)))
+  if (!progs.length) return null
+  const agenda = data.agenda || []
+  return (
+    <section className="panel panel-pad">
+      <h4 className="section-title">Programas com vigência</h4>
+      {progs.map((p, i) => {
+        const [tone, label] = PROGRAMA_STATUS[p.status] || ['', p.status]
+        const total = Math.max(1, (new Date(`${p.fim}T00:00:00`) - new Date(`${p.inicio}T00:00:00`)) / 86400000)
+        const pct = p.status === 'ATIVO' ? Math.min(100, Math.max(0, 100 - (p.dias_restantes / total) * 100)) : 100
+        const conc = p.concessoes || {}
+        const proximos = agenda.filter((a) => a.programa === p.codigo && p.status === 'ATIVO')
+        return (
+          <div key={i} className={`program ${p.status === 'ATIVO' ? 'active' : ''}`}>
+            <div className="row">
+              <b>{p.nome || humanize(p.codigo)}</b>
+              <Badge tone={tone}>{label}</Badge>
+              {p.status === 'ATIVO' ? <span className="small right">{remaining(p.dias_restantes)}</span> : null}
+            </div>
+            <div className="small muted">
+              De {fmtDate(p.inicio)} a {fmtDate(p.fim)}
+              {(p.renovacoes || []).length ? `, renovado ${p.renovacoes.length} vez(es)` : ''}
+              {p.encerrado_em ? `; ${p.status === 'EXPIRADO' ? 'venceu' : 'encerrado'} em ${fmtDate(p.encerrado_em)}${p.motivo_encerramento ? ` (${p.motivo_encerramento})` : ''}` : ''}
+            </div>
+            {p.status === 'ATIVO' ? <div className="program-bar"><i style={{ width: `${pct}%` }} /></div> : null}
+            <div className="mt-s">
+              {(conc.verbas || []).map((v) => <span key={v.codigo} className="chip">{v.nome || humanize(v.codigo)} {money(v.valor)}</span>)}
+              {(conc.beneficios || []).map((b) => <span key={b.codigo} className="chip">{b.nome || humanize(b.codigo)}</span>)}
+              {(conc.acessos || []).map((a) => <span key={a} className="chip">{humanize(a)}</span>)}
+            </div>
+            {proximos.length ? (
+              <div className="small mt-s">
+                {proximos.map((a) => (
+                  <div key={a.evento_id} className="muted">
+                    {a.tipo === 'aviso' ? 'Aviso de vencimento' : 'Vencimento'} em {fmtDate(a.data)}{a.emitido ? ' (já emitido)' : ' (agendado)'}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {p.aviso_em && p.status === 'ATIVO' ? <div className="small muted">Aviso enviado em {fmtDate(p.aviso_em)}.</div> : null}
+          </div>
+        )
+      })}
+    </section>
+  )
+}
+
 function Profile({ data, cargoNames, onSelect }) {
-  const { meta } = useApp()
+  const app = useApp()
   const e = data.colaborador
   const h = data.hierarquia || { cadeia: [], subordinados: [] }
-  const hoje = meta.hoje
+  const hoje = data.hoje || app.hoje
   const conduta = e.conduta || {}
   const timeline = careerTimeline(e, cargoNames)
   const cadeia = [...(h.cadeia || [])].reverse()
@@ -177,6 +236,7 @@ function Profile({ data, cargoNames, onSelect }) {
           </section>
         </div>
         <div className="col">
+          <Programs data={data} />
           <section className="panel panel-pad">
             <h4 className="section-title">Formação</h4>
             <div>{ESCOLARIDADE_LABEL[e.escolaridade] || humanize(e.escolaridade)}</div>
@@ -220,7 +280,7 @@ function Profile({ data, cargoNames, onSelect }) {
 }
 
 function EmployeeView({ id, onChanged, onSelect, cargoNames }) {
-  const { toast, openCase, meta, onLive } = useApp()
+  const { toast, openCase, meta, hoje, onLive } = useApp()
   const [data, setData] = useState(null)
   const [form, setForm] = useState(null)
   const [tab, setTab] = useState('perfil')
@@ -267,13 +327,14 @@ function EmployeeView({ id, onChanged, onSelect, cargoNames }) {
           <h2>{form.nome}</h2>
           <div className="hero-role">{cargoNome} <span className="muted">em {form.unidade}, {form.cidade}/{form.uf}</span></div>
           <div className="hero-facts">
-            <span><b>{span(form.data_admissao, meta.hoje)}</b> de banco</span>
-            <span><b>{span(form.data_inicio_cargo || form.data_admissao, meta.hoje)}</b> no cargo</span>
+            <span><b>{span(form.data_admissao, hoje)}</b> de banco</span>
+            <span><b>{span(form.data_inicio_cargo || form.data_admissao, hoje)}</b> no cargo</span>
             <span>{form.jornada_horas}h, {REGIME_LABEL[form.regime_jornada] || form.regime_jornada}</span>
             {gestor ? <span>reporta a <a onClick={() => onSelect(gestor.id)}>{gestor.nome}</a></span> : <span>topo da organização</span>}
           </div>
           <div className="row gap-s mt">
             <Badge tone={SITUACAO_TONE[form.situacao]}>{SITUACAO_LABEL[form.situacao] || form.situacao}</Badge>
+            {(data.programas || []).filter((p) => p.status === 'ATIVO').map((p) => <Badge key={p.codigo} tone="info">{p.nome || humanize(p.codigo)} até {fmtDate(p.fim)}</Badge>)}
             {conf.conforme ? <Badge tone="ok">Conforme aos contratos</Badge> : <Badge tone="bad">{conf.falhas.length + conf.pendencias_estado_alvo.length} pendência(s) de conformidade</Badge>}
             <span className="small muted mono">{form.id} · versão {form.versao}</span>
           </div>
@@ -281,7 +342,7 @@ function EmployeeView({ id, onChanged, onSelect, cargoNames }) {
         <div className="hero-actions">
           <button className="btn primary" onClick={() => setComposer(true)}>Disparar evento</button>
           <button className="btn" onClick={async () => {
-            const c = await api.post('/events', { evento: { tipo: 'auditoria.conformidade_solicitada', colaborador_id: id, data_efetiva: meta.hoje, origem: 'interface', dados: { motivo: 'Conferência manual' } } })
+            const c = await api.post('/events', { evento: { tipo: 'auditoria.conformidade_solicitada', colaborador_id: id, data_efetiva: hoje, origem: 'interface', dados: { motivo: 'Conferência manual' } } })
             openCase(c.id)
           }}>Conferir conformidade</button>
           <button className="btn ghost" onClick={async () => { try { await api.post(`/employees/${id}/drift`, {}); toast('Desvio injetado'); load() } catch (e) { toast(e.message, 'bad') } }}>Injetar desvio</button>
@@ -315,7 +376,7 @@ function EmployeeView({ id, onChanged, onSelect, cargoNames }) {
           <div className="row">
             <label className="check"><input type="checkbox" checked={!!conduta.processo_disciplinar_aberto} onChange={(e) => set('conduta', { ...conduta, processo_disciplinar_aberto: e.target.checked })} /> processo disciplinar aberto</label>
             <label className="check"><input type="checkbox" checked={!!conduta.medida_restritiva_compliance} onChange={(e) => set('conduta', { ...conduta, medida_restritiva_compliance: e.target.checked })} /> medida restritiva de compliance</label>
-            <button className="btn sm" onClick={() => set('conduta', { ...conduta, advertencias: [...(conduta.advertencias || []), { data: meta.hoje, motivo: 'Advertência registrada no laboratório' }] })}>Registrar advertência ({(conduta.advertencias || []).length})</button>
+            <button className="btn sm" onClick={() => set('conduta', { ...conduta, advertencias: [...(conduta.advertencias || []), { data: hoje, motivo: 'Advertência registrada no laboratório' }] })}>Registrar advertência ({(conduta.advertencias || []).length})</button>
           </div>
           <div className="panel panel-pad">
             <div className="row mb"><h4>Estabilidades</h4>
@@ -323,7 +384,7 @@ function EmployeeView({ id, onChanged, onSelect, cargoNames }) {
               <button className="btn sm" onClick={() => {
                 const tipo = document.getElementById('estab-add').value
                 const fim = new Date(); fim.setMonth(fim.getMonth() + 12)
-                set('estabilidades', [...(form.estabilidades || []), { tipo, inicio: meta.hoje, fim: fim.toISOString().slice(0, 10) }])
+                set('estabilidades', [...(form.estabilidades || []), { tipo, inicio: hoje, fim: fim.toISOString().slice(0, 10) }])
               }}>Adicionar</button>
             </div>
             {(form.estabilidades || []).map((e, i) => (
@@ -338,7 +399,7 @@ function EmployeeView({ id, onChanged, onSelect, cargoNames }) {
           </div>
           <div className="panel panel-pad">
             <div className="row mb"><h4>Dependentes</h4>
-              <button className="btn sm" onClick={() => set('dependentes', [...(form.dependentes || []), { nome: 'Novo dependente', parentesco: 'FILHO', data_nascimento: meta.hoje }])}>Adicionar</button></div>
+              <button className="btn sm" onClick={() => set('dependentes', [...(form.dependentes || []), { nome: 'Novo dependente', parentesco: 'FILHO', data_nascimento: hoje }])}>Adicionar</button></div>
             {(form.dependentes || []).map((d, i) => (
               <div key={i} className="row small mb">
                 <input value={d.nome} onChange={(ev) => set('dependentes', form.dependentes.map((x, j) => j === i ? { ...x, nome: ev.target.value } : x))} />
@@ -511,7 +572,7 @@ export default function Employees() {
               <div key={e.id} className={`side-item ${sel === e.id ? 'active' : ''}`} onClick={() => setSel(e.id)}>
                 <div className="row gap-s"><Avatar nome={e.nome} size={22} /><b className="ellipsis" style={{ maxWidth: 150 }}>{e.nome}</b>
                   <span className="right">{e.conforme ? <Badge tone="ok">ok</Badge> : <Badge tone="bad">{e.pendencias}</Badge>}</span></div>
-                <div className="small muted">{e.cargo_nome || e.cargo} · {e.unidade}{e.situacao !== 'ATIVO' ? ` · ${SITUACAO_LABEL[e.situacao] || e.situacao}` : ''}</div>
+                <div className="small muted">{e.cargo_nome || e.cargo} · {e.unidade}{e.situacao !== 'ATIVO' ? ` · ${SITUACAO_LABEL[e.situacao] || e.situacao}` : ''}{(e.programas || []).length ? ` · em programa até ${fmtDate(e.programas[0].fim)}` : ''}</div>
               </div>
             ))}
           </div>

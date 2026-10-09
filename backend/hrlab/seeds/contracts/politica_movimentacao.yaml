@@ -28,3 +28,23 @@ parametros:
   conduta:
     janela_advertencias_meses: 12
     max_advertencias: 1
+  # Programas com vigência: o colaborador participa por um período a partir da
+  # data oficial. Enquanto o programa está ativo, as concessões entram no estado
+  # alvo; no vencimento (ou encerramento antecipado) elas são retiradas pela linha.
+  programas:
+    ALTO_POTENCIAL:
+      nome: Programa de Alto Potencial
+      duracao_meses: 12
+      aviso_dias: 30
+      avaliacao_minima: 4
+      meses_minimos_de_casa: 12
+      renovacoes_max: 1
+      evento_aviso: colaborador.programa_a_vencer
+      evento_vencimento: colaborador.programa_expirado
+      trilha: TRILHA_ALTO_POTENCIAL
+      concessoes:
+        verbas:
+          - {codigo: BOLSA_ALTO_POTENCIAL, nome: Bolsa de desenvolvimento (alto potencial), valor: 1200}
+        beneficios:
+          - {codigo: MENTORIA_EXECUTIVA, nome: Mentoria executiva, plano: PROGRAMA_ALTO_POTENCIAL}
+        acessos: [PLATAFORMA_LIDERANCA]

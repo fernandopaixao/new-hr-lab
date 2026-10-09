@@ -34,7 +34,10 @@
 | Linha de produção | Sequência fixa de seis estágios: gatilho, elegibilidade, planejamento, auditoria, execução e conferência final. |
 | Estágio ou estação | Uma etapa da linha, com fila própria no Redis. |
 | Contrato | Documento versionado que descreve regras e estado alvo: norma, política, cargo ou processo. |
-| Vigência | Período em que uma versão de contrato vale. |
+| Vigência | Período em que uma versão de contrato vale. Também o período de um programa com vigência. |
+| Programa com vigência | Participação com prazo (por exemplo, o programa de alto potencial, que vale 12 meses a partir da data oficial). Enquanto ativo, o que ele concede entra no estado alvo; no vencimento ou no encerramento antecipado, a linha retira. |
+| Agenda de vigências | Avisos e vencimentos calculados a partir dos programas ativos. Cada item é emitido uma vez, como evento comum da linha. |
+| Relógio simulado | Data de negócio que pode ser avançada na tela Vigências para testar prazos sem esperar; vazio, vale o calendário real. |
 | Regra | Expressão que deve ser verdadeira, com tipo (bloqueante, excecionável, alerta), base legal e explicação de falha. |
 | Exceção | Aprovação humana que libera uma regra excecionável que falhou. |
 | Estado alvo (to-be) | Como o colaborador deve estar, pelo cargo e pela norma: jornada, faixa, verbas, benefícios, acessos, equipamentos, cláusulas. |

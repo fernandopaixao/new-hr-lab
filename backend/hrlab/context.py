@@ -158,6 +158,18 @@ class Ctx:
         def operacao_executada(code: str) -> bool:
             return any(r.get("operacao") == code and r.get("status") == "EXECUTADA" for r in self.receipts)
 
+        def programa(code: str) -> dict:
+            """Active program with this code, else the most recent one, else an empty record."""
+            progs = [x for x in lst("programas") if x.get("codigo") == code]
+            return next((x for x in progs if x.get("status") == "ATIVO"), progs[-1] if progs else {})
+
+        def programa_ativo(code: str) -> bool:
+            return programa(code).get("status") == "ATIVO"
+
+        def dias_para_vencer(code: str) -> int | None:
+            fim = programa(code).get("fim")
+            return days_between(hoje, fim) if fim and programa_ativo(code) else None
+
         def cpf_em_uso(cpf: str) -> bool:
             return "".join(c for c in str(cpf) if c.isdigit()) in self.cpfs_ativos
 
@@ -198,6 +210,10 @@ class Ctx:
             "sindicato_da_uf": sindicato_da_uf,
             "advertencias_ultimos_meses": advertencias_ultimos_meses,
             "operacao_executada": operacao_executada,
+            "programa": programa,
+            "programa_ativo": programa_ativo,
+            "dias_para_vencer": dias_para_vencer,
+            "programas_ativos": [x.get("codigo") for x in lst("programas") if x.get("status") == "ATIVO"],
             "cpf_valido": cpf_valido,
             "cpf_em_uso": cpf_em_uso,
             "somar_meses": add_months,

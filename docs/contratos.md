@@ -48,6 +48,7 @@ Em parâmetros de operação, valores de verbas e benefícios e condições `qua
 | `subordinados_diretos`, `niveis_acima` | Tamanho da equipe direta e quantos gestores há acima na cadeia. |
 | `evento` | O evento, com `tipo`, `data_efetiva`, `dados` e `colaborador_id`. |
 | `hoje` | Data efetiva do evento (AAAA-MM-DD). |
+| `programas_ativos` | Códigos dos programas com vigência ativos do colaborador. |
 | `norma`, `politica` | Parâmetros (`parametros`) da norma e da política vigentes. |
 | `cargo_atual`, `cargo_destino` | Contratos de cargo atual e alvo, com `nivel`, `segmento`, `familia`, `cargo_confianca` e `estado_alvo`. |
 | `idade`, `meses_de_casa`, `anos_de_casa` | Calculados na data efetiva. |
@@ -71,6 +72,7 @@ Em parâmetros de operação, valores de verbas e benefícios e condições `qua
 | `cpf_valido(cpf)`, `cpf_em_uso(cpf)` | Dígito verificador e duplicidade entre colaboradores ativos. |
 | `somar_meses(data, n)`, `meses_entre(a, b)`, `dias_entre(a, b)`, `anos_entre(a, b)`, `data(texto)` | Datas. |
 | `cargo(codigo)` | Contrato de um cargo qualquer. |
+| `programa(codigo)`, `programa_ativo(codigo)`, `dias_para_vencer(codigo)` | Programa com vigência do colaborador (o ativo, ou o mais recente), se está ativo e quantos dias faltam para o fim ([ADR 0023](adr/0023-eventos-com-vigencia.md)). |
 | `len`, `min`, `max`, `abs`, `round`, `sum`, `any`, `all`, `int`, `float`, `str`, `bool`, `vazio(x)` | Utilitários. |
 
 ## Norma (`NORMA`)
@@ -98,6 +100,27 @@ compliance:            # regras que valem para qualquer colaborador, a qualquer 
 ## Política (`POLITICA`)
 
 Contém só `parametros`, usados como `politica.<grupo>.<nome>`. Por exemplo, `politica.promocao.meses_minimos_no_cargo` e `politica.conduta.max_advertencias`.
+
+Os programas com vigência ficam em `politica.programas.<CODIGO>` ([ADR 0023](adr/0023-eventos-com-vigencia.md)):
+
+```yaml
+programas:
+  ALTO_POTENCIAL:
+    nome: Programa de Alto Potencial
+    duracao_meses: 12                 # vale 12 meses a partir da data oficial
+    aviso_dias: 30                    # o aviso de vencimento sai 30 dias antes do fim
+    avaliacao_minima: 4
+    meses_minimos_de_casa: 12
+    renovacoes_max: 1
+    evento_aviso: colaborador.programa_a_vencer
+    evento_vencimento: colaborador.programa_expirado
+    concessoes:                       # entram no estado alvo enquanto o programa estiver ativo
+      verbas: [{codigo: BOLSA_ALTO_POTENCIAL, nome: Bolsa de desenvolvimento (alto potencial), valor: 1200}]
+      beneficios: [{codigo: MENTORIA_EXECUTIVA, nome: Mentoria executiva, plano: PROGRAMA_ALTO_POTENCIAL}]
+      acessos: [PLATAFORMA_LIDERANCA]
+```
+
+A inclusão grava o fim no programa do colaborador; mudar a duração na política vale para as próximas inclusões. A agenda emite o aviso e o vencimento pela linha normal, e os processos de vencimento, renovação e encerramento antecipado recebem o código do programa em `dados.programa`.
 
 ## Cargo (`CARGO`)
 
@@ -172,6 +195,7 @@ Um evento coletivo não altera ninguém diretamente: o gatilho seleciona os cola
 | Reduzir `politica.promocao.meses_minimos_no_cargo` de 12 para 4 | Política | Cenário "Promoção sem interstício" (5 meses no cargo) deixa de pedir exceção |
 | Incluir um item em `estado_alvo.equipamentos` de um cargo | Cargo | Promoções para o cargo provisionam o item (operação derivada); a conformidade aponta quem já está no cargo sem ele |
 | Trocar `PRM-08` (processo disciplinar) de `EXCECIONAVEL` para `BLOQUEANTE` | Processo de promoção | O cenário "Promoção com processo disciplinar" passa a terminar em "Não elegível" |
+| Mudar `politica.programas.ALTO_POTENCIAL.duracao_meses` de 12 para 6 | Política | Novas inclusões no programa de alto potencial vencem em seis meses; quem já participa mantém o fim registrado |
 | Remover `ENVIAR_ESOCIAL` da orquestração da promoção | Processo de promoção | A auditoria (regras ou agente) aponta o eSocial faltando antes de executar |
 | Remover `CALCULAR_RESCISAO` da orquestração do desligamento | Processo de desligamento | A auditoria rejeita o plano antes da execução, sem alterar nenhum sistema |
 | Nova versão da norma com `vr_valor_dia` maior e vigência futura | Norma | Eventos com data efetiva antes da vigência usam o valor antigo |

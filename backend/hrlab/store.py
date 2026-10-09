@@ -230,7 +230,8 @@ class Store:
         for pattern in patterns:
             async for key in self.r.scan_iter(match=pattern, count=500):
                 await self.r.delete(key)
-        await self.r.delete(f"{P}:cases", f"{P}:approvals", f"{P}:approvals:pending", LOG_STREAM, f"{P}:scenario_runs")
+        await self.r.delete(f"{P}:cases", f"{P}:approvals", f"{P}:approvals:pending", LOG_STREAM, f"{P}:scenario_runs",
+                          f"{P}:vigencia:emitidos")
         async for key in self.r.scan_iter(match=f"{P}:employee:*:log", count=500):
             await self.r.delete(key)
 

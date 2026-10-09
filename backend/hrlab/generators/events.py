@@ -12,6 +12,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from .. import vigencia
 from ..context import add_months
 from ..expr import months_between
 from .team import FIRST_F, FIRST_M, LAST, cpf
@@ -422,6 +423,112 @@ def s_concorrentes(c: GenCtx):
     ], "preparacao": {e["id"]: prep | {"data_inicio_unidade": add_months(c.today, -12)}}}
 
 
+# ------------------------------------------------- programas com vigência
+# Mirrors the ALTO_POTENCIAL entry of the seed policy, used to prepare employees
+# that are already in the program (renewal, early termination, expiry).
+ALTO_POTENCIAL = {"nome": "Programa de Alto Potencial", "aviso_dias": 30, "evento_aviso": "colaborador.programa_a_vencer",
+                  "evento_vencimento": "colaborador.programa_expirado",
+                  "concessoes": {"verbas": [{"codigo": "BOLSA_ALTO_POTENCIAL", "nome": "Bolsa de desenvolvimento (alto potencial)", "valor": 1200}],
+                                 "beneficios": [{"codigo": "MENTORIA_EXECUTIVA", "nome": "Mentoria executiva", "plano": "PROGRAMA_ALTO_POTENCIAL"}],
+                                 "acessos": ["PLATAFORMA_LIDERANCA"]}}
+
+
+def _hipo_candidate(c: GenCtx) -> dict | None:
+    return c.pick(lambda x: x["cargo"] in ("ANALISTA_PL", "ANALISTA_SR", "GERENTE_RELACIONAMENTO", "COORDENADOR")
+                  and months_between(x.get("data_admissao"), c.today) >= 18 and not vigencia.active_programs(x))
+
+
+def _in_program(c: GenCtx, e: dict, inicio: str, fim: str, aviso_em: str | None = None) -> dict:
+    """Patch that puts an employee in the high-potential program, with what it grants."""
+    conc = ALTO_POTENCIAL["concessoes"]
+    prog = {"codigo": "ALTO_POTENCIAL", "nome": ALTO_POTENCIAL["nome"], "inicio": inicio, "fim": fim, "status": "ATIVO",
+            "aviso_dias": ALTO_POTENCIAL["aviso_dias"], "aviso_em": aviso_em, "concessoes": conc,
+            "evento_aviso": ALTO_POTENCIAL["evento_aviso"], "evento_vencimento": ALTO_POTENCIAL["evento_vencimento"],
+            "caso_origem": "preparacao-de-cenario", "renovacoes": [], "encerrado_em": None, "motivo_encerramento": None}
+    verba = dict(conc["verbas"][0], recorrente=True, origem="CONTRATO", desde=inicio, competencia=None)
+    beneficio = dict(conc["beneficios"][0], valor=None, desde=inicio)
+    return {"programas": [prog], "avaliacao_desempenho": 5,
+            "verbas": [v for v in e.get("verbas") or [] if v.get("codigo") != verba["codigo"]] + [verba],
+            "beneficios": [b for b in e.get("beneficios") or [] if b.get("codigo") != beneficio["codigo"]] + [beneficio],
+            "acessos": [a for a in e.get("acessos") or [] if a != "PLATAFORMA_LIDERANCA"] + ["PLATAFORMA_LIDERANCA"],
+            "conduta": {"advertencias": [], "processo_disciplinar_aberto": False, "medida_restritiva_compliance": False}}
+
+
+def _reserve(e: dict, fim: str) -> list[str]:
+    """Agenda id of an expiry this scenario plays itself, so the agenda does not emit it in parallel.
+
+    Only needed when the prepared program is already due; programs that end in
+    the future keep their real agenda, so advancing the clock later expires them.
+    """
+    return [vigencia.event_id(e["id"], "ALTO_POTENCIAL", fim, vigencia.VENCIMENTO)]
+
+
+def s_alto_potencial(c: GenCtx):
+    e = _hipo_candidate(c)
+    if not e:
+        return None
+    return {"eventos": [evt("colaborador.programa_alto_potencial_iniciado", e["id"],
+                            {"data_oficial": c.today, "justificativa": "Indicação do comitê de talentos"}, c, "alto_potencial_inclusao")],
+            "preparacao": {e["id"]: {"avaliacao_desempenho": 5, "programas": [],
+                                     "conduta": {"advertencias": [], "processo_disciplinar_aberto": False, "medida_restritiva_compliance": False}}}}
+
+
+def s_alto_potencial_avaliacao(c: GenCtx):
+    e = _hipo_candidate(c)
+    if not e:
+        return None
+    return {"eventos": [evt("colaborador.programa_alto_potencial_iniciado", e["id"], {"data_oficial": c.today}, c, "alto_potencial_avaliacao_baixa")],
+            "preparacao": {e["id"]: {"avaliacao_desempenho": 3, "programas": []}}}
+
+
+def s_alto_potencial_duplicado(c: GenCtx):
+    e = _hipo_candidate(c)
+    if not e:
+        return None
+    inicio, fim = add_months(c.today, -3), add_months(c.today, 9)
+    ev = evt("colaborador.programa_alto_potencial_iniciado", e["id"], {"data_oficial": c.today}, c, "alto_potencial_ja_participa")
+    return {"eventos": [ev], "preparacao": {e["id"]: _in_program(c, e, inicio, fim)}}
+
+
+def s_alto_potencial_vencimento(c: GenCtx):
+    e = _hipo_candidate(c)
+    if not e:
+        return None
+    inicio, fim = add_months(c.today, -12), c.today
+    ev = evt("colaborador.programa_expirado", e["id"], {"programa": "ALTO_POTENCIAL", "fim": fim}, c, "alto_potencial_vencimento")
+    ev["metadados"]["reserva_agenda"] = _reserve(e, fim)
+    return {"eventos": [ev], "preparacao": {e["id"]: _in_program(c, e, inicio, fim, aviso_em=add_months(c.today, -1))}}
+
+
+def s_alto_potencial_vencimento_antecipado(c: GenCtx):
+    e = _hipo_candidate(c)
+    if not e:
+        return None
+    inicio, fim = add_months(c.today, -6), add_months(c.today, 6)
+    ev = evt("colaborador.programa_expirado", e["id"], {"programa": "ALTO_POTENCIAL"}, c, "alto_potencial_vencimento_antecipado")
+    return {"eventos": [ev], "preparacao": {e["id"]: _in_program(c, e, inicio, fim)}}
+
+
+def s_alto_potencial_renovacao(c: GenCtx):
+    e = _hipo_candidate(c)
+    if not e:
+        return None
+    inicio, fim = add_months(c.today, -11), add_months(c.today, 1)
+    ev = evt("colaborador.programa_renovado", e["id"], {"programa": "ALTO_POTENCIAL", "justificativa": "Renovação aprovada pelo comitê"},
+             c, "alto_potencial_renovacao")
+    return {"eventos": [ev], "preparacao": {e["id"]: _in_program(c, e, inicio, fim, aviso_em=c.today)}}
+
+
+def s_alto_potencial_encerramento(c: GenCtx):
+    e = _hipo_candidate(c)
+    if not e:
+        return None
+    inicio, fim = add_months(c.today, -4), add_months(c.today, 8)
+    ev = evt("colaborador.programa_encerrado", e["id"], {"programa": "ALTO_POTENCIAL", "motivo": "Mudança de trilha de carreira"},
+             c, "alto_potencial_encerramento")
+    return {"eventos": [ev], "preparacao": {e["id"]: _in_program(c, e, inicio, fim)}}
+
+
 FINAL_OK = ["CONCLUIDO", "CONCLUIDO_COM_RESSALVAS"]
 SCENARIOS: list[Scenario] = [
     Scenario("promocao_padrao", "Promoção padrão", "PADRAO", "Analista júnior elegível promovido a pleno.", FINAL_OK, s_promocao_padrao),
@@ -462,6 +569,13 @@ SCENARIOS: list[Scenario] = [
     Scenario("merito_acima_do_limite", "Mérito acima do limite", "EXCECAO", "15% exige comitê.", ["AGUARDANDO_APROVACAO"], s_merito_acima),
     Scenario("jornada_8h_sem_cargo_de_confianca", "Jornada de 8h sem confiança", "BLOQUEIO", "Viola o art. 224 da CLT.", ["NAO_ELEGIVEL"], s_jornada_8h),
     Scenario("reajuste_cct_coletivo", "Reajuste coletivo da CCT", "COLETIVO", "Data-base: um caso por colaborador da base SEEB-SP.", ["CONCLUIDO"], s_reajuste_cct),
+    Scenario("alto_potencial_inclusao", "Inclusão no programa de alto potencial", "PADRAO", "Vale 12 meses a partir da data oficial: bolsa, mentoria, plataforma de liderança e vencimento agendado.", FINAL_OK, s_alto_potencial),
+    Scenario("alto_potencial_avaliacao_baixa", "Alto potencial com avaliação baixa", "EXCECAO", "Avaliação abaixo da política exige o comitê.", ["AGUARDANDO_APROVACAO"], s_alto_potencial_avaliacao),
+    Scenario("alto_potencial_ja_participa", "Alto potencial para quem já participa", "BLOQUEIO", "Programa já ativo; o caminho é a renovação.", ["NAO_ELEGIVEL"], s_alto_potencial_duplicado),
+    Scenario("alto_potencial_vencimento", "Vencimento do programa de alto potencial", "PADRAO", "Fim da vigência: a linha retira bolsa, mentoria e acesso.", FINAL_OK, s_alto_potencial_vencimento),
+    Scenario("alto_potencial_vencimento_antecipado", "Vencimento antes do fim da vigência", "BLOQUEIO", "Evento de vencimento com 6 meses de vigência pela frente.", ["NAO_ELEGIVEL"], s_alto_potencial_vencimento_antecipado),
+    Scenario("alto_potencial_renovacao", "Renovação do programa de alto potencial", "PADRAO", "Vigência estendida por mais 12 meses; vencimento reagendado.", FINAL_OK, s_alto_potencial_renovacao),
+    Scenario("alto_potencial_encerramento", "Encerramento antecipado do programa", "PADRAO", "Saída do programa antes do fim; concessões retiradas e vencimento cancelado.", FINAL_OK, s_alto_potencial_encerramento),
     Scenario("conformidade_com_divergencia", "Conformidade com divergência", "PADRAO", "Colaborador com desvio gerado; o plano remedia.", FINAL_OK, s_conformidade_drift),
     Scenario("conformidade_coletiva", "Conformidade coletiva", "COLETIVO", "Varredura de todos os colaboradores contra os contratos.", ["CONCLUIDO"], s_conformidade_coletiva),
     Scenario("evento_duplicado", "Evento duplicado", "ESTRESSE", "Mesmo id enviado duas vezes; o segundo é descartado.", ["CONCLUIDO", "CONCLUIDO_COM_RESSALVAS", "DUPLICADO"], s_duplicado),

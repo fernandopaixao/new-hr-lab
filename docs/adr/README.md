@@ -26,3 +26,4 @@ Cada registro segue o mesmo formato: contexto, decisão, alternativas considerad
 | [0020](0020-proximo-passo-explicito.md) | Próximo passo explícito em cada fase | pedida pelo usuário |
 | [0021](0021-provedores-de-llm-na-nuvem.md) | Provedores de LLM na nuvem (Claude, OpenAI e compatíveis, Gemini) ao lado do Ollama | pedida pelo usuário |
 | [0022](0022-assistente-de-configuracao-inicial.md) | Assistente de configuração inicial na interface | pedida pelo usuário |
+| [0023](0023-eventos-com-vigencia.md) | Eventos com vigência (programa de alto potencial), agenda derivada e relógio simulado | pedida pelo usuário |

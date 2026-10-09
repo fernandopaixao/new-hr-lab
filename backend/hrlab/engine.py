@@ -111,6 +111,22 @@ def target_state(emp: dict, ctx: Ctx) -> dict:
             beneficios.append({"codigo": b["codigo"], "nome": b.get("nome"), "plano": b.get("plano"),
                                "valor": round(float(val), 2) if isinstance(val, (int, float)) else val,
                                "base_legal": b.get("base_legal"), "fonte": ref_norma})
+    # Active programs with a validity period add what they grant while they last;
+    # once a program expires or ends, its grants leave the target state and are removed.
+    for prog in emp.get("programas") or []:
+        if prog.get("status") != "ATIVO":
+            continue
+        ref_prog = f"PROGRAMA {prog.get('codigo')} (vigente até {prog.get('fim')})"
+        conc = prog.get("concessoes") or {}
+        for v in conc.get("verbas") or []:
+            if not any(x["codigo"] == v["codigo"] for x in verbas):
+                verbas.append({"codigo": v["codigo"], "nome": v.get("nome"), "valor": round(float(v.get("valor") or 0), 2), "fonte": ref_prog})
+        for b in conc.get("beneficios") or []:
+            if not any(x["codigo"] == b["codigo"] for x in beneficios):
+                beneficios.append({**{k: b.get(k) for k in ("codigo", "nome", "plano", "valor")}, "fonte": ref_prog})
+        for a in conc.get("acessos") or []:
+            if "acessos" in tobe and not any(x["codigo"] == a for x in tobe["acessos"]):
+                tobe["acessos"].append({"codigo": a, "fonte": ref_prog})
     tobe["beneficios"] = beneficios
     tobe["verbas"] = verbas
     if emp.get("uf"):

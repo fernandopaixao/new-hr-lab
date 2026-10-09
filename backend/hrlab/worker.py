@@ -11,7 +11,7 @@ import logging
 import os
 import socket
 
-from . import agent
+from . import agent, vigencia
 from .contracts import ContractRepo
 from .domain import STAGE_KEYS
 from .pipeline import Pipeline
@@ -19,6 +19,7 @@ from .store import GROUP, Store, stream_key
 
 log = logging.getLogger("hrlab.worker")
 STAGE_CONCURRENCY = int(os.getenv("STAGE_CONCURRENCY", "4"))
+AGENDA_INTERVAL_S = float(os.getenv("AGENDA_INTERVAL_S", "5"))
 
 
 class Worker:
@@ -92,12 +93,24 @@ class Worker:
                 log.exception("erro no monitor do agente")
             await asyncio.sleep(10)
 
+    async def agenda_loop(self) -> None:
+        """Emits warning and expiry events of programs whose dates were reached on the simulated clock."""
+        while not self.stopping:
+            try:
+                ctl = await self.store.control()
+                if not ctl.get("paused"):
+                    await vigencia.tick(self.store, self.pipeline)
+            except Exception:  # noqa: BLE001
+                log.exception("erro na agenda de vigências")
+            await asyncio.sleep(AGENDA_INTERVAL_S)
+
     async def run(self) -> None:
         await self.store.ensure_groups(STAGE_KEYS)
         await ContractRepo(self.store).seed()
         log.info("worker %s iniciado para os estágios %s", self.name, STAGE_KEYS)
         tasks = [asyncio.create_task(self.stage_loop(s)) for s in STAGE_KEYS]
         tasks.append(asyncio.create_task(self.agent_monitor()))
+        tasks.append(asyncio.create_task(self.agenda_loop()))
         await asyncio.gather(*tasks)
 
 

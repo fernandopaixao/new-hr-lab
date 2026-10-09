@@ -7,7 +7,7 @@ Os agentes devem poder conferir se o plano de execução e a execução estão a
 ## Decisão
 
 - A elegibilidade é **só determinística**. Ela é reprodutível e explicável regra a regra, e é onde estão as exigências legais.
-- Na **conferência do plano** e na **auditoria**, as regras avaliam o estado projetado ou final e o agente de IA recebe o caso (evento, colaborador antes e depois, plano, recibos, regras, contrato) e responde num formato JSON fixo: recomendação, confiança, resumo, achados com severidade e referência, e justificativa.
+- Na **auditoria** (antes da execução, sobre o estado projetado) e na **conferência final** (depois da execução, sobre o estado final), as regras avaliam o estado e o agente de IA recebe o caso (evento, colaborador antes e depois, plano, recibos, regras, contrato) e responde num formato JSON fixo: recomendação, confiança, resumo, achados com severidade e referência, e justificativa.
 - O caso vai para revisão humana quando as regras reprovam ou exigem aprovação, ou quando o agente recomenda REPROVADO. Com o modo "sempre", tudo passa por uma pessoa. A recomendação do agente aparece na tela de aprovação.
 - O agente nunca aprova sozinho o que as regras reprovaram.
 

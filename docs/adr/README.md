@@ -4,7 +4,7 @@ Cada registro segue o mesmo formato: contexto, decisão, alternativas considerad
 
 | Nº | Decisão | Origem |
 | --- | --- | --- |
-| [0001](0001-linha-de-producao-por-estagios.md) | Linha de produção com seis estágios e uma fila por estágio | desenho |
+| [0001](0001-linha-de-producao-por-estagios.md) | Linha de produção com seis estágios e uma fila por estágio (ordem atualizada pela 0018) | desenho |
 | [0002](0002-redis-como-armazenamento-unico.md) | Redis como fila, armazenamento, log, pub/sub e índice | definida com o usuário (filas) |
 | [0003](0003-contratos-versionados.md) | Contratos versionados em YAML, em quatro tipos, com vigência | desenho |
 | [0004](0004-avaliador-de-expressoes-seguro.md) | Regras como expressões avaliadas por um interpretador seguro | desenho |
@@ -21,3 +21,6 @@ Cada registro segue o mesmo formato: contexto, decisão, alternativas considerad
 | [0015](0015-estrategia-de-visibilidade.md) | Visibilidade por modelo de leitura, painel, métricas e rastro por caso | fase 2 |
 | [0016](0016-embeddings-de-todos-os-eventos.md) | Embeddings de todos os eventos com indexador dedicado e busca exata | fase 2 |
 | [0017](0017-agente-de-linguagem-natural.md) | Agente de linguagem natural em três etapas, com números exatos e citações | fase 2 |
+| [0018](0018-auditoria-antes-da-execucao.md) | Auditoria antes da execução e conferência final depois | pedida pelo usuário |
+| [0019](0019-hierarquia-e-gestor-imediato.md) | Hierarquia por gestor imediato, usada nas regras e nas aprovações | pedida pelo usuário |
+| [0020](0020-proximo-passo-explicito.md) | Próximo passo explícito em cada fase | pedida pelo usuário |

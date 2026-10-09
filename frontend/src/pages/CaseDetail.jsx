@@ -23,7 +23,11 @@ export function ApprovalBox({ ap, onDone }) {
       </div>
       <p>{ap.explicacao}</p>
       {ap.regra?.base_legal ? <div className="small muted">Base: {ap.regra.base_legal}</div> : null}
-      <div className="small">Quem pode decidir: {ap.aprovadores.map((a) => meta.personas[a]?.nome || a).join(', ')}</div>
+      <div className="small">Quem pode decidir: {ap.aprovadores.map((a) => meta.personas[a]?.nome || a).join(', ')}
+        {ap.responsavel ? <> · gestor imediato: <b>{ap.responsavel.nome}</b> <span className="muted">({ap.responsavel.id}, {ap.responsavel.cargo})</span></> : null}</div>
+      {ap.status === 'PENDENTE' && meta.resultado_aprovacao?.[ap.estagio] ? (
+        <div className="small muted">Aprovando, {meta.resultado_aprovacao[ap.estagio].aprovar}; rejeitando, {meta.resultado_aprovacao[ap.estagio].rejeitar}.</div>
+      ) : null}
       {ap.recomendacao_agente ? (
         <div className={`callout mt ${ap.recomendacao_agente.recomendacao === 'APROVADO' ? 'ok' : 'bad'}`}>
           <b>Recomendação do agente: {ap.recomendacao_agente.recomendacao}</b> ({Math.round((ap.recomendacao_agente.confianca || 0) * 100)}%). {ap.recomendacao_agente.resumo}
@@ -54,7 +58,7 @@ function StageTrack({ c, meta, onPick }) {
       {meta.estagios.map((s, i) => {
         const e = c.etapas?.[s.id] || {}
         return (
-          <div key={s.id} className={`step ${e.status}`} onClick={() => onPick(s.id)}>
+          <div key={s.id} className={`step ${e.status}`} onClick={() => onPick(s.id)} title={`${s.descricao} Saída: ${s.saida}`}>
             <div className="h">{i + 1}. {s.nome}</div>
             <div className="small">{e.status === 'PENDENTE' ? 'pendente' : (e.status || '').toLowerCase().replace('_', ' ')}</div>
             <div className="small muted">{e.duracao_ms != null ? dur(e.duracao_ms) : ''}</div>
@@ -65,7 +69,21 @@ function StageTrack({ c, meta, onPick }) {
   )
 }
 
-const STAGE_TAB = { intake: 'evento', eligibility: 'elegibilidade', planning: 'plano', plan_review: 'conferencia', execution: 'execucao', audit: 'auditoria' }
+const STAGE_TAB = { intake: 'evento', eligibility: 'elegibilidade', planning: 'plano', audit: 'auditoria', execution: 'execucao', verification: 'conferencia' }
+
+export function NextStep({ step, compact = false }) {
+  const { meta } = useApp()
+  if (!step) return null
+  const quem = step.quem ? step.quem.split('/').map((p) => meta.personas[p]?.nome || p).join(' ou ') : null
+  if (compact) return <div className="next-step-inline small"><b>Próximo passo:</b> {step.texto}</div>
+  return (
+    <div className={`next-step ${step.encerrado ? 'done' : step.quem ? 'human' : ''}`}>
+      <div className="label">Próximo passo</div>
+      <div>{step.texto}</div>
+      <div className="small muted">{step.encerrado ? 'Caso encerrado.' : quem ? `Quem age: ${quem}.` : 'Quem age: o sistema, sem intervenção.'}</div>
+    </div>
+  )
+}
 
 export default function CaseDetail({ id, onClose }) {
   useEffect(() => {
@@ -113,6 +131,7 @@ export default function CaseDetail({ id, onClose }) {
           </div>
           <p className="muted" style={{ margin: '6px 0 10px' }}>{c.resumo}</p>
           <StageTrack c={c} meta={meta} onPick={(s) => setTab(STAGE_TAB[s])} />
+          <NextStep step={c.proximo_passo} />
           <div className="row mt">
             {c.status === 'PARADO' ? <>
               <button className="btn primary" onClick={() => act(() => api.post(`/cases/${id}/release`, {}), 'Avançou um estágio')}>Avançar para {meta.estagios.find((s) => s.id === c.estagio_parado)?.nome}</button>
@@ -134,7 +153,7 @@ export default function CaseDetail({ id, onClose }) {
         <div className="drawer-body">
           <Tabs value={tab} onChange={setTab} tabs={[
             ['resumo', 'Resumo e decisões'], ['evento', 'Evento'], ['elegibilidade', 'Elegibilidade'], ['plano', `Plano (${plano.operacoes?.length || 0})`],
-            ['conferencia', 'Conferência'], ['execucao', 'Execução'], ['auditoria', 'Auditoria'], ['aprovacoes', `Aprovações${pending ? ` (${pending})` : ''}`],
+            ['auditoria', 'Auditoria'], ['execucao', 'Execução'], ['conferencia', 'Conferência final'], ['aprovacoes', `Aprovações${pending ? ` (${pending})` : ''}`],
             ['estado', 'Estado antes e depois'], ['log', `Trilha (${data.log.length})`],
           ]} />
 
@@ -166,8 +185,8 @@ export default function CaseDetail({ id, onClose }) {
               {c.excecoes_aprovadas?.length ? <div className="panel panel-pad"><h4 className="mb">Exceções aprovadas</h4>
                 {c.excecoes_aprovadas.map((e, i) => <div key={i} className="small">{e.regra_id} aprovada por {meta.personas[e.por]?.pessoa} ({e.por}): {e.justificativa}</div>)}</div> : null}
               <div className="grid2">
-                <AgentCard review={c.agente_plano} title="Agente: conferência do plano" />
-                <AgentCard review={c.agente_auditoria} title="Agente: auditoria da execução" />
+                <AgentCard review={c.agente_auditoria} title="Agente: auditoria antes da execução" />
+                <AgentCard review={c.agente_conferencia} title="Agente: conferência final da execução" />
               </div>
               {c.filhos?.length ? <div className="panel panel-pad"><h4 className="mb">Casos individuais gerados</h4>
                 <div className="row">{c.filhos.slice(0, 200).map((f) => <a key={f} className="chip" onClick={() => openCase(f)}>{f}</a>)}</div></div> : null}
@@ -227,13 +246,15 @@ export default function CaseDetail({ id, onClose }) {
             </div>
           ) : <Empty>Plano ainda não gerado.</Empty>)}
 
-          {tab === 'conferencia' && (
+          {tab === 'auditoria' && (
             <div className="col">
-              {c.conferencia_plano ? <>
-                <div className="row"><h3>Conferência determinística</h3><Status value={c.conferencia_plano.decisao} /></div>
-                <RulesTable rules={c.conferencia_plano.regras} onlyFailed />
-              </> : <Empty>Ainda não conferido.</Empty>}
-              <AgentCard review={c.agente_plano} title="Agente de conferência do plano" />
+              <div className="callout small">A auditoria acontece antes de qualquer sistema ser alterado: regras do processo, verificações do contrato de serviço,
+                compliance e estado alvo são avaliados sobre o estado projetado pelo plano. Só o que passa aqui é executado.</div>
+              {c.auditoria ? <>
+                <div className="row"><h3>Auditoria do plano</h3><Status value={c.auditoria.decisao} /></div>
+                <RulesTable rules={c.auditoria.regras} onlyFailed />
+              </> : <Empty>Ainda não auditado.</Empty>}
+              <AgentCard review={c.agente_auditoria} title="Agente de auditoria do plano" />
             </div>
           )}
 
@@ -254,13 +275,15 @@ export default function CaseDetail({ id, onClose }) {
             </div>
           ) : <Empty>Ainda não executado.</Empty>)}
 
-          {tab === 'auditoria' && (
+          {tab === 'conferencia' && (
             <div className="col">
-              {c.auditoria ? <>
-                <div className="row"><h3>Auditoria pelo contrato de serviço</h3><Status value={c.auditoria.decisao} /></div>
-                <RulesTable rules={c.auditoria.regras} onlyFailed />
-              </> : <Empty>Ainda não auditado.</Empty>}
-              <AgentCard review={c.agente_auditoria} title="Agente de auditoria" />
+              <div className="callout small">A conferência final prova que o executado é igual ao auditado: todas as operações com recibo e estado final igual ao projetado.
+                Se a auditoria interna rejeitar aqui, todas as operações são compensadas.</div>
+              {c.conferencia_final ? <>
+                <div className="row"><h3>Conferência final</h3><Status value={c.conferencia_final.decisao} /></div>
+                <RulesTable rules={c.conferencia_final.regras} onlyFailed />
+              </> : <Empty>Ainda não conferido.</Empty>}
+              <AgentCard review={c.agente_conferencia} title="Agente de conferência da execução" />
             </div>
           )}
 

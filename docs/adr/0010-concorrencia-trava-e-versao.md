@@ -11,7 +11,7 @@ Com vários workers e rajadas de eventos, dois casos podem tratar o mesmo colabo
 - **Guarda de obsolescência:** um estágio só roda se o caso estiver naquele estágio e na fila. Mensagens repetidas ou atrasadas não têm efeito.
 - **Idempotência de eventos** pelo id do evento.
 - **Retomada após queda:** um worker que volta com o mesmo nome relê suas mensagens pendentes e retoma o estágio que deixou em processamento.
-- A auditoria compara o estado final gravado pelo próprio caso; se outro caso alterou o colaborador depois, emite o alerta `AUD-CONCORRENCIA` em vez de acusar uma divergência falsa.
+- A conferência final compara o estado final gravado pelo próprio caso; se outro caso alterou o colaborador depois, emite o alerta `FIN-CONCORRENCIA` em vez de acusar uma divergência falsa.
 
 ## Alternativas consideradas
 

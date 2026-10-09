@@ -34,7 +34,7 @@ O laboratório trata cada operação de RH como um **evento** que percorre uma *
 | Contrato de norma | Regras e parâmetros regulatórios que valem para todos (CLT e CCT dos bancários). | `seeds/contracts/norma_clt_cct_bancarios.yaml` |
 | Contrato de política | Parâmetros internos da empresa (interstício, limites de aumento, conduta). | `seeds/contracts/politica_movimentacao.yaml` |
 | Contrato de cargo | Estado alvo de quem ocupa o cargo (jornada, faixa, verbas, benefícios, acessos, equipamentos, cláusulas), regras de entrada e compliance permanente. | `seeds/contracts/cargos.yaml` |
-| Contrato de processo | Para um tipo de evento: esquema, elegibilidade, orquestração, conferência do plano e auditoria. | `seeds/contracts/processos.yaml` |
+| Contrato de processo | Para um tipo de evento: esquema, elegibilidade, orquestração e auditoria (regras do plano e verificações do contrato de serviço). | `seeds/contracts/processos.yaml` |
 | Prateleira | Catálogo de operações desacopladas, parametrizáveis e compensáveis. | `backend/hrlab/shelf.py` |
 | Agente de conferência | Modelo de linguagem local (Ollama) que audita o plano e a execução e recomenda APROVADO ou REPROVADO. | `backend/hrlab/agent.py` |
 | Aprovação | Decisão humana de uma persona sobre uma exceção ou uma revisão, sempre com justificativa. | Tela Aprovações |
@@ -47,11 +47,13 @@ O exemplo é a promoção de um analista júnior para analista pleno.
 1. **Gatilho.** O evento `colaborador.promovido` chega com `cargo_destino` e `novo_salario`. O gatilho garante idempotência (o mesmo evento não abre dois casos), encontra o contrato de processo vigente na data efetiva, valida o esquema e confirma que o colaborador existe.
 2. **Elegibilidade.** As regras do processo de promoção (situação ativa, interstício, avaliação, conduta, irredutibilidade, limite de aumento) e as regras de entrada do cargo destino são avaliadas. Cada regra tem tipo: `BLOQUEANTE` barra; `EXCECIONAVEL` barra até que uma persona aprove a exceção; `ALERTA` só registra. O resultado é `ELEGIVEL`, `EXCECAO_NECESSARIA` ou `NAO_ELEGIVEL`, com a explicação de cada regra.
 3. **Planejamento.** O motor calcula o **estado alvo** do colaborador pelo contrato do cargo destino e pela norma. O plano junta as operações explícitas do processo (alterar cargo, alterar salário, eSocial) com as operações **derivadas** da diferença entre o estado atual e o estado alvo (por exemplo, trocar o plano de saúde ou conceder um acesso). Cada operação traz o motivo e a base legal. As operações descartadas também são explicadas.
-4. **Conferência do plano.** O plano é aplicado em simulação sobre uma cópia do colaborador. Regras de conferência do processo e o compliance da norma e do cargo são avaliados sobre o estado projetado. O agente de IA recebe o caso e recomenda APROVADO ou REPROVADO, com achados. Se as regras ou o agente reprovarem, o caso vai para revisão humana.
+4. **Auditoria.** Antes de qualquer sistema ser alterado, o plano é aplicado em simulação sobre uma cópia do colaborador e a auditoria avalia, sobre esse estado projetado, as regras do plano, as verificações do contrato de serviço, o compliance da norma e do cargo e o estado alvo. O agente de IA recebe o caso e recomenda APROVADO ou REPROVADO, com achados. Regra bloqueante rejeita sem alterar nada; exceção ou parecer contrário do agente vai para uma pessoa. Só o que passa aqui é executado ([ADR 0018](adr/0018-auditoria-antes-da-execucao.md)).
 5. **Execução.** As operações são aplicadas em ordem, cada uma com recibo e protocolo. Se uma falha, a saga compensa as já aplicadas, restaurando os campos que elas alteraram. Uma trava por colaborador impede que dois casos alterem a mesma pessoa ao mesmo tempo, e um controle de versão força o replanejamento se o cadastro mudou depois do plano.
-6. **Auditoria.** O estado final é conferido contra as verificações do processo, o compliance, os recibos, o estado alvo do cargo e a projeção do plano. O agente audita de novo. Uma auditoria reprovada vai para revisão humana; se a revisão confirmar a reprovação, a execução é revertida.
+6. **Conferência final.** Prova que o executado é igual ao auditado: todas as operações têm recibo e o estado final é igual ao projetado. O agente confere a execução. Uma divergência vai para a auditoria interna; se ela confirmar, a execução é revertida.
 
-Ao final o caso recebe uma decisão com explicação, por exemplo: "Concluído. Execução auditada e conforme ao contrato de serviço; agente recomenda APROVADO."
+Ao final o caso recebe uma decisão com explicação, por exemplo: "Concluído. Execução igual à auditada e com recibos; agente recomenda APROVADO."
+
+Em todas as fases o caso diz o **próximo passo**: o que acontece agora, quem precisa agir e o que aprovar ou rejeitar provoca ([ADR 0020](adr/0020-proximo-passo-explicito.md)). Quando uma regra pede o Gestor, a aprovação mostra o gestor imediato real do colaborador ([ADR 0019](adr/0019-hierarquia-e-gestor-imediato.md)).
 
 ## O que o laboratório permite experimentar
 

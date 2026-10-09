@@ -14,12 +14,13 @@ from fastapi import Body, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, StreamingResponse
 
-from . import agent, ask, embeddings as emb, engine, facts as factsmod, indexer, logbook as log, shelf
+from . import agent, ask, embeddings as emb, engine, facts as factsmod, indexer, logbook as log, migrations, shelf
 from .config import DEFAULT_SETTINGS
 from .context import Ctx
 from .contracts import ContractError, ContractRepo, from_yaml, to_yaml, validate
 from .domain import (
-    APPROVAL_TYPE_LABELS, FINAL_STATUSES, NA_FILA, PERSONAS, PROCESSANDO, STAGES, STAGE_KEYS, STATUS_LABELS,
+    APPROVAL_OUTCOMES, APPROVAL_TYPE_LABELS, FINAL_STATUSES, NA_FILA, PERSONAS, PROCESSANDO, STAGE_OUTCOMES, STAGES, STAGE_KEYS,
+    STATUS_LABELS, next_step,
 )
 from .generators import events as evgen
 from .generators.team import DRIFTS, apply_drift, generate_team
@@ -58,6 +59,7 @@ def today() -> str:
 
 async def bootstrap() -> None:
     await store.ensure_groups(STAGE_KEYS)
+    await migrations.audit_before_execution(store)
     await repo.seed()
     if not await store.r.smembers(f"{P}:employees"):
         await _generate(80, 42, 15, replace=True, actor="sistema (carga inicial)")
@@ -94,7 +96,8 @@ async def health() -> dict:
 @app.get("/api/meta")
 async def meta() -> dict:
     return {
-        "estagios": [{"id": k, "nome": n, "descricao": d} for k, n, d in STAGES],
+        "estagios": [{"id": k, "nome": n, "descricao": d, "saida": STAGE_OUTCOMES.get(k)} for k, n, d in STAGES],
+        "resultado_aprovacao": {k: {"aprovar": a, "rejeitar": r} for k, (a, r) in APPROVAL_OUTCOMES.items()},
         "status": STATUS_LABELS, "finais": sorted(FINAL_STATUSES), "personas": PERSONAS,
         "tipos_aprovacao": APPROVAL_TYPE_LABELS, "tipos_evento": await repo.event_types(),
         "templates_evento": EVENT_TEMPLATES, "cenarios": [s.describe() for s in evgen.SCENARIOS],
@@ -182,15 +185,34 @@ def employee_summary(e: dict, conf: dict | None = None) -> dict:
     return out
 
 
-async def compliance_ctx() -> Ctx:
+async def compliance_ctx(employees: list[dict] | None = None) -> Ctx:
     t = today()
-    return Ctx(event={"data_efetiva": t, "dados": {}}, norma=await repo.norma(t), politica=await repo.politica(t), cargos=await repo.cargos(t))
+    employees = employees if employees is not None else await store.list_employees()
+    return Ctx(event={"data_efetiva": t, "dados": {}}, norma=await repo.norma(t), politica=await repo.politica(t), cargos=await repo.cargos(t),
+               employees={e["id"]: e for e in employees})
+
+
+def person_ref(e: dict, ctx: Ctx) -> dict:
+    """Short reference to a person, used by the hierarchy views."""
+    return {"id": e.get("id"), "nome": e.get("nome"), "cargo": e.get("cargo"), "cargo_nome": (ctx.cargo(e.get("cargo")) or {}).get("nome"),
+            "unidade": e.get("unidade"), "cidade": e.get("cidade"), "uf": e.get("uf"), "situacao": e.get("situacao")}
 
 
 @app.get("/api/employees")
 async def list_employees() -> list[dict]:
-    ctx = await compliance_ctx()
-    return [employee_summary(e, engine.employee_compliance(e, ctx)) for e in await store.list_employees()]
+    employees = await store.list_employees()
+    ctx = await compliance_ctx(employees)
+    reports: dict[str, int] = {}
+    for e in employees:
+        if e.get("gestor_id") and e.get("situacao") != "DESLIGADO":
+            reports[e["gestor_id"]] = reports.get(e["gestor_id"], 0) + 1
+    out = []
+    for e in employees:
+        row = employee_summary(e, engine.employee_compliance(e, ctx))
+        row.update({"gestor_id": e.get("gestor_id"), "gestor_nome": ctx.manager(e).get("nome"), "subordinados": reports.get(e["id"], 0),
+                    "cargo_nome": (ctx.cargo(e.get("cargo")) or {}).get("nome"), "nivel": (ctx.cargo(e.get("cargo")) or {}).get("nivel")})
+        out.append(row)
+    return out
 
 
 @app.get("/api/employees/{emp_id}")
@@ -202,7 +224,11 @@ async def get_employee(emp_id: str) -> dict:
     conf = engine.employee_compliance(emp, ctx)
     tobe = engine.target_state(emp, ctx)
     cases = [case_summary(c) for c in await store.list_cases(limit=500) if c.get("colaborador_id") == emp_id]
-    return {"colaborador": emp, "conformidade": conf, "estado_alvo": {k: v for k, v in tobe.items() if not k.startswith("_")},
+    hierarquia = {"cadeia": [person_ref(m, ctx) for m in ctx.management_chain(emp)],
+                  "subordinados": sorted((person_ref(r, ctx) for r in ctx.direct_reports(emp_id)), key=lambda r: (r["cargo"] or "", r["nome"] or "")),
+                  "pares": len([p for p in ctx.direct_reports(emp.get("gestor_id")) if p["id"] != emp_id]) if emp.get("gestor_id") else 0}
+    return {"colaborador": emp, "cargo_contrato": {k: (ctx.cargo(emp.get("cargo")) or {}).get(k) for k in ("nome", "nivel", "segmento", "descricao")},
+            "conformidade": conf, "estado_alvo": {k: v for k, v in tobe.items() if not k.startswith("_")}, "hierarquia": hierarquia,
             "casos": cases[:50], "log": await log.query(store, colaborador_id=emp_id, limit=200)}
 
 
@@ -541,6 +567,7 @@ async def get_case(case_id: str) -> dict:
     if not case:
         raise HTTPException(404, "caso não encontrado")
     approvals = [await store.get_approval(a) for a in case.get("aprovacoes") or []]
+    case["proximo_passo"] = case.get("proximo_passo") or next_step(case)
     return {"caso": case, "aprovacoes": [a for a in approvals if a], "log": await log.query(store, case_id=case_id, limit=1000)}
 
 
@@ -636,7 +663,7 @@ async def stats() -> dict:
         for s, e in (c.get("etapas") or {}).items():
             if e.get("duracao_ms") is not None and s in durations:
                 durations[s].append(e["duracao_ms"])
-        for k in ("agente_plano", "agente_auditoria"):
+        for k in ("agente_auditoria", "agente_conferencia"):
             a = c.get(k)
             if a:
                 if a.get("duracao_ms") is not None and not a.get("cache"):

@@ -9,7 +9,7 @@ O laboratório precisa de aprovações de exceção com decisões registradas. D
 - Sete personas fixas: Operador de RH, Gestor imediato, HRBP, Jurídico, Compliance, Auditoria interna e Comitê de remuneração. A persona ativa é escolhida no topo da interface e enviada no cabeçalho `X-Persona`.
 - Cada regra excecionável declara quais personas podem aprovar. A API recusa (403) decisões de outras personas.
 - Toda decisão exige justificativa de pelo menos 5 caracteres e grava quem decidiu, quando, o quê e por quê no caso, na aprovação e no log.
-- Há três tipos de aprovação: exceção de elegibilidade, revisão do plano e revisão da auditoria.
+- Há três tipos de aprovação: exceção de regra (na elegibilidade ou na auditoria), revisão humana da auditoria (antes da execução) e revisão humana da conferência final (depois). Quando a regra pede o Gestor, a aprovação mostra o gestor imediato real do colaborador (ADR 0019).
 
 ## Alternativas consideradas
 

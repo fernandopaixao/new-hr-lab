@@ -2,6 +2,7 @@
 import numpy as np
 
 from hrlab import embeddings as emb
+from hrlab.domain import STAGE_KEYS
 from hrlab.ask import heuristic_interpret, sanitize_query, stats_for, strip_emoji
 from hrlab.facts import apply_filters, case_document, case_fact, group_count, insights, percentile
 
@@ -10,9 +11,9 @@ from .conftest import TODAY
 
 def _case(cid, status, tipo="colaborador.promovido", failed=None, created=1_000_000, finished=1_005_000):
     return {
-        "id": cid, "evento_tipo": tipo, "status": status, "estagio": "audit", "criado_em": created, "finalizado_em": finished,
+        "id": cid, "evento_tipo": tipo, "status": status, "estagio": "verification", "criado_em": created, "finalizado_em": finished,
         "colaborador_id": "F00001", "colaborador_nome": "Ana", "evento": {"tipo": tipo, "data_efetiva": TODAY, "dados": {}},
-        "etapas": {s: {"status": "OK", "duracao_ms": 10} for s in ("intake", "eligibility", "planning", "plan_review", "execution", "audit")},
+        "etapas": {s: {"status": "OK", "duracao_ms": 10} for s in STAGE_KEYS},
         "elegibilidade": {"decisao": "NAO_ELEGIVEL" if failed else "ELEGIVEL", "explicacao": "x",
                           "regras": [{"id": failed, "tipo": "BLOQUEANTE", "passou": False, "descricao": "d", "explicacao": "e"}] if failed else []},
         "estado_inicial": {"cargo": "CAIXA", "uf": "SP"}, "aprovacoes": [],

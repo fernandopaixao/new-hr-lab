@@ -1,4 +1,4 @@
-"""Evaluation context shared by eligibility, planning, plan review and audit.
+"""Evaluation context shared by eligibility, planning, audit and the final check.
 
 `build_names` returns the variables and helper functions available to contract
 expressions. Helpers are bound to a subject employee ("colaborador").
@@ -39,13 +39,47 @@ class Ctx:
     """Static data needed to build evaluation names for one case."""
 
     def __init__(self, *, event: dict, norma: dict | None, politica: dict | None, cargos: dict[str, dict],
-                 cpfs_ativos: set[str] | None = None, receipts: list[dict] | None = None):
+                 cpfs_ativos: set[str] | None = None, receipts: list[dict] | None = None,
+                 employees: dict[str, dict] | None = None):
         self.event = event
         self.norma = norma or {}
         self.politica = politica or {}
         self.cargos = cargos
         self.cpfs_ativos = cpfs_ativos or set()
         self.receipts = receipts or []
+        self.employees = employees or {}
+
+    # ------------------------------------------------------------ hierarchy
+    def manager(self, emp: dict | None) -> dict:
+        return self.employees.get(str((emp or {}).get("gestor_id") or "")) or {}
+
+    def direct_reports(self, emp_id: str | None) -> list[dict]:
+        return [e for e in self.employees.values()
+                if emp_id and e.get("gestor_id") == emp_id and e.get("situacao") != "DESLIGADO"]
+
+    def management_chain(self, emp: dict | None) -> list[dict]:
+        chain, seen = [], set()
+        cur = self.manager(emp)
+        while cur and cur.get("id") not in seen:
+            seen.add(cur.get("id"))
+            chain.append(cur)
+            cur = self.manager(cur)
+        return chain
+
+    def level(self, emp: dict | None) -> int:
+        return int((self.cargo((emp or {}).get("cargo")) or {}).get("nivel") or 0)
+
+    def unit_manager(self, unidade: str | None, acima_de: dict | None = None) -> str | None:
+        """Head of a unit: the active employee there whose manager works elsewhere (or who has none).
+
+        With `acima_de`, only a head of a higher level than that person counts, so a
+        manager moving between units never ends up reporting to a peer.
+        """
+        heads = [e for e in self.employees.values() if e.get("unidade") == unidade and e.get("situacao") != "DESLIGADO"
+                 and self.manager(e).get("unidade") != unidade and e.get("id") != (acima_de or {}).get("id")
+                 and (acima_de is None or self.level(e) > self.level(acima_de))]
+        heads.sort(key=lambda e: -self.level(e))
+        return heads[0]["id"] if heads else None
 
     @property
     def today(self) -> str:
@@ -132,6 +166,7 @@ class Ctx:
         ultimo_aumento = max(ultimos_aumentos) if ultimos_aumentos else emp.get("data_admissao")
 
         cargo_atual = self.cargo(emp.get("cargo"))
+        gestor = self.manager(emp)
         names: dict[str, Any] = {
             "colaborador": emp,
             "anterior": anterior or {},
@@ -167,6 +202,11 @@ class Ctx:
             "cpf_em_uso": cpf_em_uso,
             "somar_meses": add_months,
             "cargo": lambda code: self.cargo(code),
+            "gestor": gestor,
+            "cargo_do_gestor": self.cargo(gestor.get("cargo")) or {},
+            "subordinados_diretos": len(self.direct_reports(emp.get("id"))),
+            "niveis_acima": len(self.management_chain(emp)),
+            "gestor_da_unidade": lambda unidade: self.unit_manager(unidade, acima_de=emp),
         }
         if extra:
             names.update(extra)

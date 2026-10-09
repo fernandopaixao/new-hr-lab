@@ -1,7 +1,8 @@
 """Conference agent (agente de conferência) backed by Ollama.
 
-The deterministic rules decide eligibility and compliance. The agent reviews the
-plan and the execution as a second line of defense and ALWAYS returns a clear
+The deterministic rules decide eligibility and compliance. The agent audits the
+plan before execution (kind AUDITORIA) and checks the execution afterwards (kind
+CONFERENCIA) as a second line of defense and ALWAYS returns a clear
 recommendation (APROVADO or REPROVADO) with findings and reasoning.
 
 Optimizations for running against a local or network Ollama:
@@ -55,7 +56,8 @@ RESPONSE_SCHEMA = {
 }
 
 SYSTEM_PROMPT = """Você é o agente de conferência de um sistema de RH de um banco brasileiro.
-Sua função é revisar, como segunda linha de defesa, planos de execução e execuções de operações de RH,
+Sua função é auditar, como segunda linha de defesa, planos de execução antes que qualquer sistema seja alterado
+e conferir as execuções concluídas de operações de RH,
 verificando aderência à CLT, à convenção coletiva dos bancários (valores ilustrativos), à política interna
 e ao contrato de serviço do processo.
 
@@ -104,9 +106,9 @@ def _rules_digest(rules: list[dict]) -> dict:
     return {"avaliadas": len(rules), "nao_atendidas": failed}
 
 
-def build_plan_prompt(case: dict, processo: dict, cargo_alvo: dict | None) -> str:
+def build_audit_prompt(case: dict, processo: dict, cargo_alvo: dict | None) -> str:
     ctx = {
-        "tarefa": "Conferir o PLANO de execução antes de executá-lo.",
+        "tarefa": "Auditar o PLANO antes da execução: nenhum sistema foi alterado ainda; aprove só o que pode ser executado.",
         "evento": {"tipo": case["evento"]["tipo"], "data_efetiva": case["evento"].get("data_efetiva"), "dados": case["evento"].get("dados")},
         "processo": {"codigo": processo.get("codigo"), "nome": processo.get("nome"), "descricao": processo.get("descricao")},
         "elegibilidade": {"decisao": (case.get("elegibilidade") or {}).get("decisao"),
@@ -117,22 +119,22 @@ def build_plan_prompt(case: dict, processo: dict, cargo_alvo: dict | None) -> st
                   for o in (case.get("plano") or {}).get("operacoes") or []],
         "operacoes_descartadas": (case.get("plano") or {}).get("descartadas"),
         "estado_projetado": _compact_employee((case.get("plano") or {}).get("projetado")),
-        "conferencia_deterministica": _rules_digest((case.get("conferencia_plano") or {}).get("regras") or []),
+        "auditoria_deterministica": _rules_digest((case.get("auditoria") or {}).get("regras") or []),
     }
     return "Contexto do caso (JSON):\n" + json.dumps(ctx, ensure_ascii=False, default=str) + \
         "\n\nAvalie se o plano é aderente ao compliance e às regras de negócio e responda no esquema JSON."
 
 
-def build_audit_prompt(case: dict, processo: dict) -> str:
+def build_verification_prompt(case: dict, processo: dict) -> str:
     ctx = {
-        "tarefa": "Auditar a EXECUÇÃO concluída conforme o contrato de serviço.",
+        "tarefa": "Conferir a EXECUÇÃO concluída: ela deve ser igual ao plano auditado antes da execução.",
         "evento": {"tipo": case["evento"]["tipo"], "data_efetiva": case["evento"].get("data_efetiva"), "dados": case["evento"].get("dados")},
         "processo": {"codigo": processo.get("codigo"), "sla_horas": (processo.get("auditoria") or {}).get("sla_horas")},
         "recibos": [{"operacao": r["operacao"], "status": r["status"], "descricao": r.get("descricao")} for r in (case.get("execucao") or {}).get("recibos") or []],
         "alteracoes": (case.get("execucao") or {}).get("diff"),
         "estado_final": _compact_employee(case.get("estado_final")),
-        "auditoria_deterministica": _rules_digest((case.get("auditoria") or {}).get("regras") or []),
-        "divergencias_projetado_final": (case.get("auditoria") or {}).get("divergencias"),
+        "conferencia_deterministica": _rules_digest((case.get("conferencia_final") or {}).get("regras") or []),
+        "divergencias_auditado_final": (case.get("conferencia_final") or {}).get("divergencias"),
     }
     return "Contexto do caso (JSON):\n" + json.dumps(ctx, ensure_ascii=False, default=str) + \
         "\n\nAvalie se a execução foi aplicada corretamente e em conformidade e responda no esquema JSON."
@@ -254,11 +256,11 @@ def _normalize(parsed: dict) -> dict:
 
 def heuristic_review(kind: str, case: dict) -> dict:
     """Simulated agent used only when enabled in the settings and Ollama is unavailable."""
-    if kind == "PLANO":
-        rules = (case.get("conferencia_plano") or {}).get("regras") or []
+    if kind == "AUDITORIA":
+        rules = (case.get("auditoria") or {}).get("regras") or []
         ops = [o["operacao"] for o in (case.get("plano") or {}).get("operacoes") or []]
     else:
-        rules = (case.get("auditoria") or {}).get("regras") or []
+        rules = (case.get("conferencia_final") or {}).get("regras") or []
         ops = [r["operacao"] for r in (case.get("execucao") or {}).get("recibos") or []]
     achados = []
     for r in rules:
@@ -268,7 +270,7 @@ def heuristic_review(kind: str, case: dict) -> dict:
     if tipo in ("colaborador.promovido", "colaborador.merito_concedido", "colaborador.transferido", "colaborador.desligado") and "ENVIAR_ESOCIAL" not in ops \
             and not (tipo == "colaborador.desligado" and "INICIAR_GARDEN_LEAVE" in ops):
         achados.append({"severidade": "MEDIO", "referencia": "eSocial", "descricao": "Alteração contratual sem evento eSocial correspondente."})
-    if tipo == "colaborador.desligado" and kind == "PLANO" and "CALCULAR_RESCISAO" not in ops:
+    if tipo == "colaborador.desligado" and kind == "AUDITORIA" and "CALCULAR_RESCISAO" not in ops:
         achados.append({"severidade": "ALTO", "referencia": "CLT art. 477", "descricao": "Desligamento sem cálculo de rescisão."})
     bloqueia = any(a["severidade"] in ("ALTO", "CRITICO") for a in achados)
     return {
@@ -282,7 +284,7 @@ def heuristic_review(kind: str, case: dict) -> dict:
 
 async def review(store: Store, kind: str, case: dict, processo: dict, cargo_alvo: dict | None = None) -> dict:
     settings = await store.settings()
-    prompt = build_plan_prompt(case, processo, cargo_alvo) if kind == "PLANO" else build_audit_prompt(case, processo)
+    prompt = build_audit_prompt(case, processo, cargo_alvo) if kind == "AUDITORIA" else build_verification_prompt(case, processo)
     started = time.time()
     cache_key = f"{P}:agent:cache:" + hashlib.sha256(f"{settings['ollama_model']}|{prompt}".encode()).hexdigest()
     if settings["agent_cache_enabled"]:

@@ -17,6 +17,7 @@ from typing import Any, AsyncIterator
 import redis.asyncio as aioredis
 
 from . import config
+from .domain import next_step
 
 P = "hr"
 UPDATES_CHANNEL = f"{P}:updates"
@@ -137,6 +138,7 @@ class Store:
 
     async def save_case(self, case: dict, publish: bool = True) -> dict:
         case["atualizado_em"] = now_ms()
+        case["proximo_passo"] = next_step(case)
         await self.set_json(f"{P}:case:{case['id']}", case)
         await self.r.zadd(f"{P}:cases", {case["id"]: case.get("criado_em", now_ms())})
         if publish:
@@ -237,6 +239,8 @@ def case_summary(case: dict) -> dict:
     keys = [
         "id", "evento_tipo", "evento_id", "colaborador_id", "colaborador_nome", "status", "estagio",
         "estagio_parado", "criado_em", "atualizado_em", "resumo", "cenario", "depuracao", "pai_id",
-        "recomendacao_plano", "recomendacao_auditoria", "processo",
+        "recomendacao_auditoria", "recomendacao_conferencia", "processo", "proximo_passo",
     ]
-    return {k: case.get(k) for k in keys}
+    out = {k: case.get(k) for k in keys}
+    out["proximo_passo"] = case.get("proximo_passo") or next_step(case)
+    return out

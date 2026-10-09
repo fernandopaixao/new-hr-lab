@@ -41,12 +41,13 @@
 
 | Módulo | Papel | Depende de |
 | --- | --- | --- |
-| `domain.py` | Vocabulário: estágios, status, personas, tipos de aprovação e de regra. | - |
+| `domain.py` | Vocabulário: estágios e suas saídas, status, personas, tipos de aprovação e de regra, cálculo do próximo passo. | - |
 | `expr.py` | Avaliador seguro de expressões (whitelist de nós da AST do Python). | - |
-| `context.py` | Monta as variáveis e funções disponíveis nas expressões (`colaborador`, `cargo_destino`, `meses_no_cargo`, `possui_beneficio(...)`...). | `expr` |
+| `context.py` | Monta as variáveis e funções disponíveis nas expressões (`colaborador`, `cargo_destino`, `gestor`, `meses_no_cargo`, `possui_beneficio(...)`...) e navega a hierarquia. | `expr` |
+| `migrations.py` | Migrações únicas de dados gravados, rodadas na partida da API (por exemplo, a troca de ordem da ADR 0018). | `store`, `domain` |
 | `contracts.py` | Repositório de contratos: semente, versões, vigência, validação, YAML. | `store`, `expr` |
 | `shelf.py` | Prateleira: operações, parâmetros, campos alterados, aplicação e compensação. | - |
-| `engine.py` | Lógica pura da linha: regras, elegibilidade, estado alvo, plano, conferência, auditoria, conformidade. | `context`, `shelf`, `expr` |
+| `engine.py` | Lógica pura da linha: regras, elegibilidade, estado alvo, plano, auditoria antes da execução, conferência final, conformidade. | `context`, `shelf`, `expr` |
 | `agent.py` | Agente de conferência e chamadas estruturadas ao Ollama. | `store` |
 | `pipeline.py` | Handlers dos estágios, aprovações, depuração, saga, concorrência e eventos coletivos. | todos acima |
 | `worker.py` | Loops de consumo das filas e monitor de saúde do agente. | `pipeline` |
@@ -100,14 +101,15 @@ A regra de dependência é simples: `engine.py`, `facts.py`, `shelf.py` e `expr.
 - **Idempotência de eventos.** `SET NX` em `hr:event:{id}`; um segundo envio vira um caso `DUPLICADO` apontando para o original.
 - **Trava por colaborador.** A execução segura `hr:lock:employee:{id}`; dois casos do mesmo colaborador nunca escrevem ao mesmo tempo.
 - **Versão do cadastro.** Cada gravação de colaborador incrementa `versao`. Se a versão mudou entre o plano e a execução, o caso volta para o planejamento (até 3 vezes) e registra `REPLANEJAMENTO`.
-- **Snapshot para a auditoria.** A auditoria usa o estado final gravado pelo próprio caso; se outro caso alterou o colaborador depois, a auditoria emite o alerta `AUD-CONCORRENCIA` em vez de uma falsa divergência.
+- **Snapshot para a conferência final.** A conferência final usa o estado final gravado pelo próprio caso; se outro caso alterou o colaborador depois, emite o alerta `FIN-CONCORRENCIA` em vez de uma falsa divergência.
 
 ## Falhas
 
 | Falha | Comportamento |
 | --- | --- |
 | Operação falha na execução | Saga compensa as operações aplicadas, na ordem inversa, restaurando os campos que cada uma declarou alterar. Operações sem compensação (como uma notificação já enviada) ficam registradas para tratamento manual. Status `FALHOU_COMPENSADO`. |
-| Auditoria reprovada e confirmada por uma pessoa | A execução é revertida a partir dos snapshots. Status `REVERTIDO`. |
+| Auditoria reprovada antes da execução | Nada foi alterado. Status `REJEITADO`. |
+| Conferência final reprovada e confirmada pela auditoria interna | A execução é revertida a partir dos snapshots. Status `REVERTIDO`. |
 | Ollama fora do ar | O caso para em `AGUARDANDO_AGENTE`; o monitor verifica a saúde a cada 10 segundos e recoloca os casos na fila quando o Ollama volta. Com o modo simulado ligado, um agente heurístico responde e a decisão fica marcada. |
 | Ollama responde fora do formato | Duas tentativas; depois o agente é tratado como REPROVADO e o caso vai para revisão humana. |
 | Indexador sem Ollama | Os eventos continuam marcados em `hr:vec:dirty` e são indexados quando o Ollama volta; com o modo simulado, recebem embedding simulado e são refeitos depois. |

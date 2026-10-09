@@ -82,7 +82,7 @@ Todas podem ser alteradas na tela Configurações sem reiniciar; as variáveis d
 | Configuração | Variável | Padrão | Efeito |
 | --- | --- | --- | --- |
 | URL do Ollama | `OLLAMA_BASE_URL` | `http://localhost:11434` (o compose usa `host.docker.internal`) | Onde estão os modelos. |
-| Modelo do conferente | `OLLAMA_MODEL` | `qwen2.5:7b` | Conferência do plano e auditoria. |
+| Modelo do conferente | `OLLAMA_MODEL` | `qwen2.5:7b` | Auditoria antes da execução e conferência final. |
 | Timeout | `OLLAMA_TIMEOUT_S` | 180 | Segundos por chamada. |
 | Contexto e resposta | `OLLAMA_NUM_CTX`, `OLLAMA_NUM_PREDICT` | 8192, 900 | Tokens de contexto e de saída. |
 | Manter carregado | `OLLAMA_KEEP_ALIVE` | `30m` | Tempo que o modelo fica na memória. |
@@ -103,11 +103,12 @@ Variáveis só de ambiente: `REDIS_URL`, `DATA_DIR`, `STAGE_CONCURRENCY` (casos 
 ## Rotina de demonstração
 
 1. **Cenários**, escolha "Promoção padrão" e dispare. Acompanhe na **Linha**.
-2. Clique no caso: veja regras, plano, parecer do agente e recibos.
-3. Dispare "Promoção sem interstício". O caso para em **Aguardando aprovação**. Troque a persona para HRBP, abra **Aprovações** e decida com justificativa.
-4. Em **Contratos**, mude o interstício da política, salve como nova versão e dispare o cenário de novo.
-5. Rode a **suíte completa** e compare esperado e obtido.
-6. Abra **Visão** para o painel e **Perguntar** para perguntas como "quais regras mais barram promoções?".
+2. Clique no caso: veja regras, plano, a auditoria feita antes da execução, o parecer do agente, os recibos e a conferência final. O quadro **Próximo passo** diz o que acontece agora e quem age.
+3. Dispare "Promoção sem interstício". O caso para em **Aguardando aprovação**, e o cartão na Linha diz quem precisa decidir. Troque a persona para HRBP, abra **Aprovações** e decida com justificativa.
+4. Em **Colaboradores**, navegue pelo organograma, abra um perfil e clique no gestor ou na equipe para subir e descer na hierarquia.
+5. Em **Contratos**, mude o interstício da política, salve como nova versão e dispare o cenário de novo.
+6. Rode a **suíte completa** e compare esperado e obtido.
+7. Abra **Visão** para o painel e **Perguntar** para perguntas como "quais regras mais barram promoções?".
 
 ## Depuração
 
@@ -138,6 +139,11 @@ O gargalo costuma ser o Ollama. Com o cache ligado, eventos parecidos reaproveit
 - **Configurações, Reiniciar laboratório**: limpa casos, aprovações, filas, log e índice; opcionalmente gera um time novo. Contratos e configurações ficam.
 - **Contratos, Restaurar exemplos**: volta aos contratos de exemplo.
 - **Do zero**: `docker compose down -v` apaga também os volumes.
+
+### Atualizar uma instalação existente
+
+- Casos gravados antes da auditoria passar para antes da execução ([ADR 0018](adr/0018-auditoria-antes-da-execucao.md)) são migrados sozinhos na primeira partida da API: estágios, campos e aprovações pendentes ganham os nomes novos, e casos que estavam a caminho dessas etapas voltam para a fila. Nada precisa ser feito.
+- As regras de hierarquia ([ADR 0019](adr/0019-hierarquia-e-gestor-imediato.md)) estão nos contratos de exemplo. Contratos já carregados não são trocados sozinhos; use **Contratos, Restaurar exemplos** para recebê-las (versões editadas à mão são descartadas).
 
 ## Problemas comuns
 

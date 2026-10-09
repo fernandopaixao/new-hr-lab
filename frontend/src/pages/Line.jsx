@@ -18,7 +18,9 @@ function CaseCard({ c, onOpen }) {
         <Status value={c.status} />
         <span className="small muted right">{time(c.atualizado_em)}</span>
       </div>
-      <div className="r">{c.resumo}</div>
+      {c.proximo_passo && !c.proximo_passo.encerrado
+        ? <div className={`r next ${c.proximo_passo.quem ? 'human' : ''}`}><b>{c.proximo_passo.quem ? `Com ${c.proximo_passo.quem.split('/').map((p) => meta.personas[p]?.nome || p).join(' ou ')}: ` : 'A seguir: '}</b>{c.proximo_passo.texto}</div>
+        : <div className="r">{c.resumo}</div>}
     </div>
   )
 }
@@ -69,7 +71,7 @@ export default function Line() {
       <div className="page-head">
         <div>
           <h2>Linha de produção de eventos</h2>
-          <p>Cada evento percorre gatilho, elegibilidade, planejamento, conferência, execução e auditoria. Clique em um caso para depurar.</p>
+          <p>Cada evento percorre gatilho, elegibilidade, planejamento, auditoria, execução e conferência final. Nada é executado sem passar pela auditoria. Cada cartão diz o próximo passo; clique para depurar.</p>
         </div>
       </div>
       <div className="stats">
@@ -104,6 +106,7 @@ export default function Line() {
                 <div className="num">ESTAÇÃO {i + 1}</div>
                 <div className="title">{st.nome}</div>
                 <div className="desc">{st.descricao}</div>
+                <div className="desc next">{st.saida}</div>
                 <div className="station-stats">
                   <Badge>{items.length} casos</Badge>
                   <Badge tone={q.atraso ? 'warn' : ''}>fila {q.atraso || 0}</Badge>

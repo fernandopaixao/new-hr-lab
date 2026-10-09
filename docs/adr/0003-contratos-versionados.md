@@ -13,7 +13,7 @@ Separar quatro tipos de contrato, cada um com uma responsabilidade:
 | `NORMA` | O que a lei e a convenção exigem de todos | jornada de 6h, pisos, VR e VA, auxílio-creche, estabilidades, irredutibilidade |
 | `POLITICA` | Parâmetros internos da empresa | interstício mínimo, limite de aumento, janela de advertências |
 | `CARGO` | Como deve estar quem ocupa o cargo | faixa salarial, gratificação, benefícios, acessos, equipamentos, cláusulas; regras de entrada; compliance permanente |
-| `PROCESSO` | Como tratar um tipo de evento | esquema do evento, cargo alvo, elegibilidade, orquestração, conferência do plano, auditoria, fan-out coletivo |
+| `PROCESSO` | Como tratar um tipo de evento | esquema do evento, cargo alvo, elegibilidade, orquestração, regras do plano e verificações de auditoria (avaliadas antes da execução), fan-out coletivo |
 
 Todo contrato tem `codigo`, `versao` e `vigencia` (início e fim). O motor resolve a versão vigente na **data efetiva do evento**, não na data de processamento. Salvar pela interface cria uma nova versão ou sobrescreve a atual, sempre com validação (expressões compiladas, operações existentes, parâmetros obrigatórios) e registro no log. Os exemplos ficam em YAML em `seeds/contracts` e podem ser restaurados.
 

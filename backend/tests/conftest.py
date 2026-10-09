@@ -32,8 +32,9 @@ def team(seeds):
 
 @pytest.fixture
 def make_ctx(seeds):
-    def _make(event):
-        return Ctx(event=event, norma=seeds["norma"], politica=seeds["politica"], cargos=seeds["cargos"])
+    def _make(event, employees=None):
+        return Ctx(event=event, norma=seeds["norma"], politica=seeds["politica"], cargos=seeds["cargos"],
+                   employees={e["id"]: e for e in employees or []})
     return _make
 
 

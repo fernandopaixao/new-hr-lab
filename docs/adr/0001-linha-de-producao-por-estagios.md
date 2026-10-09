@@ -6,7 +6,7 @@ As operações de RH pedidas seguem a mesma lógica: um evento dispara, a elegib
 
 ## Decisão
 
-Todo evento vira um **caso** que percorre seis estágios fixos: gatilho, elegibilidade, planejamento, conferência do plano, execução e auditoria. Cada estágio tem a própria fila (`hr:stream:{estagio}`). Um worker consome a fila, executa o handler do estágio e publica o caso na fila seguinte, ou o deixa esperando (aprovação, agente, depuração), ou o finaliza com uma decisão explicada.
+Todo evento vira um **caso** que percorre seis estágios fixos: gatilho, elegibilidade, planejamento, auditoria, execução e conferência final. A ordem original tinha a conferência do plano antes da execução e a auditoria depois; a [ADR 0018](0018-auditoria-antes-da-execucao.md) moveu a auditoria para antes da execução. Cada estágio tem a própria fila (`hr:stream:{estagio}`). Um worker consome a fila, executa o handler do estágio e publica o caso na fila seguinte, ou o deixa esperando (aprovação, agente, depuração), ou o finaliza com uma decisão explicada.
 
 O que muda entre uma promoção e um desligamento não é a linha, e sim o **contrato de processo** que ela lê (ADR 0003).
 
@@ -22,4 +22,4 @@ O que muda entre uma promoção e um desligamento não é a linha, e sim o **con
 - Pausar a linha ou uma estação é só parar de consumir; as mensagens acumulam visivelmente.
 - Pontos de parada ("parar antes de") e o modo passo a passo são guardas no início de cada estágio.
 - Reprocessar a partir de um estágio é recolocar o caso naquela fila, com o evento editado se for preciso.
-- Novas etapas (por exemplo, uma notificação pós-auditoria) exigem código; novas operações de RH não.
+- Novas etapas (por exemplo, uma notificação depois da conferência final) exigem código; novas operações de RH não.

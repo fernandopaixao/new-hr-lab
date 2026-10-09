@@ -224,3 +224,4 @@ backend/data/
 frontend/node_modules/
 frontend/dist/
 .env
+dump.rdb

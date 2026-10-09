@@ -30,8 +30,10 @@ param(
   [string]$Modelo = '',
   # Modelo de embedding (padrao: nomic-embed-text)
   [string]$Embedding = '',
-  # Porta da interface (padrao: 8080)
+  # Porta da interface (padrao: 8580); se a padrao estiver ocupada, oferece a proxima livre
   [int]$Porta = 0,
+  # Porta do Ollama em container na maquina (padrao: 11434)
+  [int]$PortaOllama = 0,
   # Quantidade de workers (padrao: 1)
   [ValidateRange(1, 64)]
   [int]$Workers = 1,
@@ -55,6 +57,10 @@ $MinCompose = [version]'2.24.0'
 $HealthTimeout = 300
 $PullTimeout = 3600
 $LocalUrl = 'http://localhost:11434'
+$DefaultPort = 8580
+$OldDefaultPort = 8080
+$PortaExplicita = $Porta -gt 0
+$PortaOllamaExplicita = $PortaOllama -gt 0
 
 # As chamadas ao Ollama e a API ignoram proxy HTTP: um proxy corporativo nao
 # alcanca localhost nem a rede local.
@@ -112,6 +118,12 @@ function Test-Port($port) {
     if ($async.AsyncWaitHandle.WaitOne(500) -and $client.Connected) { return $true }
     return $false
   } catch { return $false } finally { $client.Close() }
+}
+
+function Get-FreePort($start) {
+  $p = $start
+  for ($i = 0; $i -lt 100; $i++) { if (-not (Test-Port $p)) { return $p }; $p++ }
+  return 0
 }
 
 function Test-Http($url, $timeout = 3) {
@@ -192,11 +204,28 @@ if (Test-Path $EnvFile) {
 
 if (-not $Modelo) { $Modelo = Get-EnvValue 'OLLAMA_MODEL' }; if (-not $Modelo) { $Modelo = 'qwen2.5:7b' }
 if (-not $Embedding) { $Embedding = Get-EnvValue 'EMBEDDING_MODEL' }; if (-not $Embedding) { $Embedding = 'nomic-embed-text' }
-if ($Porta -le 0) { $p = Get-EnvValue 'UI_PORT'; if ($p) { $Porta = [int]$p } else { $Porta = 8080 } }
-
-if ((Test-Port $Porta) -and -not (Test-Http "http://localhost:$Porta/api/health")) {
-  Fail "A porta $Porta ja esta em uso por outro programa. Use -Porta com outra porta, por exemplo -Porta 8090."
+if ($Porta -le 0) {
+  $p = Get-EnvValue 'UI_PORT'
+  if ($p -eq "$OldDefaultPort") {
+    Info "A porta padrao da interface mudou de $OldDefaultPort para $DefaultPort; o .env sera atualizado."
+    $p = ''
+  }
+  if ($p) { $Porta = [int]$p } else { $Porta = $DefaultPort }
 }
+
+# Porta ocupada por outro programa (e nao por uma instalacao anterior).
+$ownUi = "$(Get-ComposeOutput port frontend 80)"
+if ((Test-Port $Porta) -and -not $ownUi.EndsWith(":$Porta") -and -not (Test-Http "http://localhost:$Porta/api/health")) {
+  if ($PortaExplicita) { Fail "A porta $Porta ja esta em uso por outro programa. Escolha outra com -Porta." }
+  $suggested = Get-FreePort ($Porta + 1)
+  if ($suggested -eq 0) { Fail "Nao encontrei porta livre perto de $Porta. Escolha uma com -Porta." }
+  Warn "A porta $Porta ja esta em uso por outro programa."
+  $answer = Ask 'Porta da interface' "$suggested"
+  if ($answer -notmatch '^\d+$') { Fail "porta invalida: $answer" }
+  if ([int]$answer -ne $suggested -and (Test-Port ([int]$answer))) { Fail "A porta $answer tambem esta em uso." }
+  $Porta = [int]$answer
+}
+Ok "Porta da interface: $Porta"
 
 # ----------------------------------------------------------------- Ollama
 Step 'Localizando o Ollama'
@@ -242,13 +271,20 @@ switch ($Ollama) {
     Ok "Modo: Ollama na rede em $hostUrl"
   }
   'container' {
-    $hostUrl = $LocalUrl
     $containerUrl = 'http://ollama:11434'
-    if ((Test-Port 11434) -and -not (Get-ComposeOutput ps -q --status running ollama)) {
-      Fail 'A porta 11434 ja esta em uso (provavelmente pelo Ollama desta maquina). Use -Ollama local, ou feche o outro Ollama.'
+    if ($PortaOllama -le 0) { $p = Get-EnvValue 'OLLAMA_PORT'; if ($p) { $PortaOllama = [int]$p } else { $PortaOllama = 11434 } }
+    # Ocupada pelo proprio Ollama em container de uma instalacao anterior nao conta.
+    $ownOllama = "$(Get-ComposeOutput port ollama 11434)"
+    if ((Test-Port $PortaOllama) -and -not $ownOllama.EndsWith(":$PortaOllama")) {
+      if ($PortaOllamaExplicita) { Fail "A porta $PortaOllama ja esta em uso. Escolha outra com -PortaOllama." }
+      $newPort = Get-FreePort ($PortaOllama + 1)
+      if ($newPort -eq 0) { Fail 'Nao encontrei porta livre para o Ollama. Escolha uma com -PortaOllama.' }
+      Warn "A porta $PortaOllama ja esta em uso (provavelmente por outro Ollama); o Ollama em container vai usar a $newPort."
+      $PortaOllama = $newPort
     }
+    $hostUrl = "http://localhost:$PortaOllama"
     if ($memGb -gt 0 -and $memGb -lt 8) { Warn "Com $memGb GB de memoria, o $Modelo pode ficar lento ou nao carregar. Considere -Modelo qwen2.5:3b." }
-    Ok 'Modo: Ollama em container, em CPU'
+    Ok "Modo: Ollama em container, em CPU (porta $PortaOllama na maquina)"
   }
   'nenhum' {
     $hostUrl = ''
@@ -281,6 +317,7 @@ Set-EnvValue 'OLLAMA_MODEL' $Modelo
 Set-EnvValue 'EMBEDDING_MODEL' $Embedding
 Set-EnvValue 'HEURISTIC_FALLBACK_ENABLED' $fallback
 Set-EnvValue 'UI_PORT' $Porta
+if ($PortaOllama -gt 0) { Set-EnvValue 'OLLAMA_PORT' $PortaOllama }
 if ($Ollama -eq 'container') { Set-EnvValue 'COMPOSE_PROFILES' 'ollama' } else { Set-EnvValue 'COMPOSE_PROFILES' '' }
 Ok '.env atualizado'
 

@@ -22,6 +22,11 @@ OLLAMA_URL=""
 MODEL=""
 EMBED_MODEL=""
 PORT=""
+PORT_EXPLICIT=0
+OLLAMA_PORT=""
+OLLAMA_PORT_EXPLICIT=0
+DEFAULT_PORT=8580
+OLD_DEFAULT_PORT=8080
 WORKERS=1
 FALLBACK=""
 PULL_MODELS=1
@@ -60,7 +65,9 @@ Modelos e servicos:
   --modelo NOME       modelo dos agentes (padrao: qwen2.5:7b)
   --embedding NOME    modelo de embedding (padrao: nomic-embed-text)
   --sem-modelos       nao baixa os modelos
-  --porta N           porta da interface (padrao: 8080)
+  --porta N           porta da interface (padrao: 8580); se a porta padrao
+                      estiver ocupada, o instalador oferece a proxima livre
+  --porta-ollama N    porta do Ollama em container na maquina (padrao: 11434)
   --workers N         quantidade de workers (padrao: 1)
   --simulado          liga o agente heuristico simulado quando o Ollama cair
                       (sem esta opcao ele fica desligado, exceto em --ollama nenhum)
@@ -80,7 +87,8 @@ while [ $# -gt 0 ]; do
     --ollama-url) need_value "$@"; OLLAMA_URL="$2"; [ "$OLLAMA_MODE" = "auto" ] && OLLAMA_MODE="rede"; shift 2 ;;
     --modelo) need_value "$@"; MODEL="$2"; shift 2 ;;
     --embedding) need_value "$@"; EMBED_MODEL="$2"; shift 2 ;;
-    --porta) need_value "$@"; PORT="$2"; shift 2 ;;
+    --porta) need_value "$@"; PORT="$2"; PORT_EXPLICIT=1; shift 2 ;;
+    --porta-ollama) need_value "$@"; OLLAMA_PORT="$2"; OLLAMA_PORT_EXPLICIT=1; shift 2 ;;
     --workers) need_value "$@"; WORKERS="$2"; shift 2 ;;
     --simulado) FALLBACK="true"; shift ;;
     --sem-modelos) PULL_MODELS=0; shift ;;
@@ -94,9 +102,9 @@ done
 case "$OLLAMA_MODE" in auto|local|rede|container|nenhum) ;; *) fail "--ollama deve ser auto, local, rede, container ou nenhum" ;; esac
 case "$WORKERS" in ''|*[!0-9]*) fail "--workers deve ser um numero" ;; esac
 [ "$WORKERS" -ge 1 ] || fail "--workers deve ser pelo menos 1"
-if [ -n "$PORT" ]; then
-  case "$PORT" in *[!0-9]*) fail "--porta deve ser um numero" ;; esac
-fi
+for p in "$PORT" "$OLLAMA_PORT"; do
+  case "$p" in *[!0-9]*) fail "--porta e --porta-ollama devem ser numeros" ;; esac
+done
 [ "$OLLAMA_MODE" = "rede" ] && [ -z "$OLLAMA_URL" ] && fail "--ollama rede exige --ollama-url"
 [ -t 0 ] || ASSUME_YES=1
 
@@ -138,6 +146,16 @@ version_ge() {
     [ "${x:-0}" -lt "${y:-0}" ] && return 1
   done
   return 0
+}
+
+free_port() {
+  # free_port INICIO -> primeira porta livre a partir de INICIO
+  local p="$1" tries=0
+  while port_in_use "$p"; do
+    p=$((p + 1)); tries=$((tries + 1))
+    [ "$tries" -lt 100 ] || return 1
+  done
+  echo "$p"
 }
 
 port_in_use() {
@@ -205,12 +223,27 @@ fi
 
 [ -n "$MODEL" ] || MODEL="$(env_get OLLAMA_MODEL)"; [ -n "$MODEL" ] || MODEL="qwen2.5:7b"
 [ -n "$EMBED_MODEL" ] || EMBED_MODEL="$(env_get EMBEDDING_MODEL)"; [ -n "$EMBED_MODEL" ] || EMBED_MODEL="nomic-embed-text"
-[ -n "$PORT" ] || PORT="$(env_get UI_PORT)"; [ -n "$PORT" ] || PORT=8080
+if [ -z "$PORT" ]; then
+  PORT="$(env_get UI_PORT)"
+  if [ "$PORT" = "$OLD_DEFAULT_PORT" ]; then
+    info "A porta padrao da interface mudou de $OLD_DEFAULT_PORT para $DEFAULT_PORT; o .env sera atualizado."
+    PORT="$DEFAULT_PORT"
+  fi
+  [ -n "$PORT" ] || PORT="$DEFAULT_PORT"
+fi
 
 # Porta ocupada por outro programa (e nao por uma instalacao anterior).
-if port_in_use "$PORT" && ! http_ok "http://localhost:$PORT/api/health"; then
-  fail "A porta $PORT ja esta em uso por outro programa. Use --porta com outra porta, por exemplo --porta 8090."
+OWN_UI="$(compose port frontend 80 2>/dev/null || true)"
+if port_in_use "$PORT" && [ "${OWN_UI##*:}" != "$PORT" ] && ! http_ok "http://localhost:$PORT/api/health"; then
+  [ "$PORT_EXPLICIT" = 0 ] || fail "A porta $PORT ja esta em uso por outro programa. Escolha outra com --porta."
+  SUGGESTED="$(free_port $((PORT + 1)))" || fail "Nao encontrei porta livre perto de $PORT. Escolha uma com --porta."
+  warn "A porta $PORT ja esta em uso por outro programa."
+  ask "Porta da interface" "$SUGGESTED"
+  case "$REPLY" in ''|*[!0-9]*) fail "porta invalida: $REPLY" ;; esac
+  if [ "$REPLY" != "$SUGGESTED" ] && port_in_use "$REPLY"; then fail "A porta $REPLY tambem esta em uso."; fi
+  PORT="$REPLY"
 fi
+ok "Porta da interface: $PORT"
 
 # ----------------------------------------------------------------- Ollama
 step "Localizando o Ollama"
@@ -255,15 +288,21 @@ case "$OLLAMA_MODE" in
     ok "Modo: Ollama na rede em $HOST_URL"
     ;;
   container)
-    HOST_URL="$LOCAL_URL"
     CONTAINER_URL="http://ollama:11434"
-    if port_in_use 11434 && [ -z "$(compose ps -q --status running ollama 2>/dev/null)" ]; then
-      fail "A porta 11434 ja esta em uso (provavelmente por um Ollama desta maquina). Use --ollama local, ou pare o outro Ollama."
+    [ -n "$OLLAMA_PORT" ] || OLLAMA_PORT="$(env_get OLLAMA_PORT)"; [ -n "$OLLAMA_PORT" ] || OLLAMA_PORT=11434
+    # Ocupada pelo proprio Ollama em container de uma instalacao anterior nao conta.
+    OWN_OLLAMA="$(compose port ollama 11434 2>/dev/null || true)"
+    if port_in_use "$OLLAMA_PORT" && [ "${OWN_OLLAMA##*:}" != "$OLLAMA_PORT" ]; then
+      [ "$OLLAMA_PORT_EXPLICIT" = 0 ] || fail "A porta $OLLAMA_PORT ja esta em uso. Escolha outra com --porta-ollama."
+      NEW_OLLAMA_PORT="$(free_port $((OLLAMA_PORT + 1)))" || fail "Nao encontrei porta livre para o Ollama. Escolha uma com --porta-ollama."
+      warn "A porta $OLLAMA_PORT ja esta em uso (provavelmente por outro Ollama); o Ollama em container vai usar a $NEW_OLLAMA_PORT."
+      OLLAMA_PORT="$NEW_OLLAMA_PORT"
     fi
+    HOST_URL="http://localhost:$OLLAMA_PORT"
     if [ -n "$MEM_GB" ] && [ "$MEM_GB" -lt 8 ]; then
       warn "Com ${MEM_GB} GB de memoria, o $MODEL pode ficar lento ou nao carregar. Considere --modelo qwen2.5:3b."
     fi
-    ok "Modo: Ollama em container, em CPU"
+    ok "Modo: Ollama em container, em CPU (porta $OLLAMA_PORT na maquina)"
     ;;
   nenhum)
     HOST_URL=""
@@ -304,6 +343,7 @@ env_set OLLAMA_MODEL "$MODEL"
 env_set EMBEDDING_MODEL "$EMBED_MODEL"
 env_set HEURISTIC_FALLBACK_ENABLED "$FALLBACK"
 env_set UI_PORT "$PORT"
+[ -z "$OLLAMA_PORT" ] || env_set OLLAMA_PORT "$OLLAMA_PORT"
 if [ "$OLLAMA_MODE" = "container" ]; then
   env_set COMPOSE_PROFILES "ollama"
 else

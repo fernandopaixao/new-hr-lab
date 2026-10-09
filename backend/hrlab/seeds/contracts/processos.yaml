@@ -1,0 +1,1014 @@
+# Contratos de processo (contratos de serviço): para cada tipo de evento descrevem
+# a elegibilidade, a orquestração (operações da prateleira), a conferência do plano
+# e a auditoria da execução.
+#
+# Convenções das expressões:
+# - campos "expressao" e "quando" são sempre expressões;
+# - em "parametros", textos que começam com "=" são expressões, o resto é literal;
+# - na elegibilidade, "colaborador" é o estado atual;
+# - na conferência do plano, "colaborador" é o estado projetado e "anterior" o atual;
+# - na auditoria, "colaborador" é o estado final e "anterior" o estado antes da execução.
+codigo: PROC_ADMISSAO
+tipo: PROCESSO
+nome: Admissão
+evento: colaborador.admitido
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+descricao: Admissão de novo colaborador CLT na categoria bancária.
+evento_schema:
+  obrigatorios: [dados.nome, dados.cpf, dados.data_nascimento, dados.cargo, dados.salario, dados.uf, dados.cidade]
+  colaborador: NAO_DEVE_EXISTIR
+cargo_alvo: "=evento.dados.cargo"
+elegibilidade:
+  incluir_entrada_cargo_alvo: true
+  regras:
+    - id: ADM-01
+      descricao: CPF válido
+      expressao: "cpf_valido(colaborador.cpf)"
+      tipo: BLOQUEANTE
+      base_legal: Cadastro eSocial (S-2200)
+      explicacao_falha: "CPF {colaborador.cpf} inválido."
+    - id: ADM-02
+      descricao: CPF sem outro vínculo ativo no banco
+      expressao: "not cpf_em_uso(colaborador.cpf)"
+      tipo: BLOQUEANTE
+      base_legal: Integridade cadastral
+      explicacao_falha: "Já existe colaborador ativo com o CPF {colaborador.cpf}."
+    - id: ADM-03
+      descricao: Maior de 18 anos (menores apenas como aprendiz)
+      expressao: "idade >= 18"
+      tipo: BLOQUEANTE
+      base_legal: CLT art. 403 e CF art. 7 XXXIII
+      explicacao_falha: "Candidato com {idade} anos; contratação CLT regular exige 18."
+    - id: ADM-04
+      descricao: Cargo de destino possui contrato vigente
+      expressao: "cargo_destino is not None"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Não há contrato de cargo vigente para {evento.dados.cargo}."
+    - id: ADM-05
+      descricao: Salário não inferior ao piso da categoria
+      expressao: "colaborador.salario_base >= norma.piso_escritorio"
+      tipo: BLOQUEANTE
+      base_legal: CCT cláusula de salário de ingresso (ilustrativa)
+      explicacao_falha: "Salário proposto R$ {colaborador.salario_base} abaixo do piso R$ {norma.piso_escritorio}."
+    - id: ADM-06
+      descricao: Salário dentro da faixa do cargo
+      expressao: "colaborador.salario_base >= cargo_destino.estado_alvo.faixa_salarial.min and colaborador.salario_base <= cargo_destino.estado_alvo.faixa_salarial.max"
+      tipo: EXCECIONAVEL
+      aprovadores: [HRBP]
+      base_legal: Política de remuneração
+      explicacao_falha: "Salário R$ {colaborador.salario_base} fora da faixa {cargo_destino.estado_alvo.faixa_salarial.min} a {cargo_destino.estado_alvo.faixa_salarial.max}."
+orquestracao:
+  derivar_estado_alvo: true
+  operacoes:
+    - operacao: CRIAR_CADASTRO
+      parametros: {dados: "=evento.dados"}
+      motivo: Evento de admissão traz os dados do candidato aprovado.
+      base_legal: CLT art. 41 (registro do empregado)
+    - operacao: AGENDAR_EXAME
+      parametros: {tipo: ADMISSIONAL}
+      motivo: Exame admissional antes do início das atividades.
+      base_legal: NR-7 (PCMSO)
+    - operacao: ENVIAR_ESOCIAL
+      parametros: {evento: S-2200, descricao: Cadastramento inicial do vínculo}
+      motivo: Admissão deve ser informada ao eSocial antes do início.
+      base_legal: Leiaute eSocial S-2200
+    - operacao: NOTIFICAR
+      parametros: {destinatarios: [GESTOR, COLABORADOR], assunto: Boas-vindas e onboarding}
+      motivo: Comunicação de início ao gestor e ao novo colaborador.
+conferencia_plano:
+  regras:
+    - id: CPL-ADM-01
+      descricao: Plano cria o cadastro com o cargo do evento
+      expressao: "colaborador.cargo == evento.dados.cargo"
+      tipo: BLOQUEANTE
+      explicacao_falha: O plano não resulta no cargo informado no evento.
+auditoria:
+  sla_horas: 24
+  incluir_compliance: true
+  verificacoes:
+    - id: AUD-ADM-01
+      descricao: Cadastro criado e ativo
+      expressao: "colaborador.situacao == 'ATIVO'"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Situação final {colaborador.situacao}, esperado ATIVO."
+    - id: AUD-ADM-02
+      descricao: Exame admissional agendado
+      expressao: "operacao_executada('AGENDAR_EXAME')"
+      tipo: BLOQUEANTE
+      base_legal: NR-7
+      explicacao_falha: Exame admissional não consta como executado.
+---
+codigo: PROC_PROMOCAO
+tipo: PROCESSO
+nome: Promoção
+evento: colaborador.promovido
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+descricao: Promoção vertical para cargo de nível superior.
+evento_schema:
+  obrigatorios: [dados.cargo_destino]
+  colaborador: DEVE_EXISTIR
+cargo_alvo: "=evento.dados.cargo_destino"
+elegibilidade:
+  incluir_entrada_cargo_alvo: true
+  regras:
+    - id: PRM-01
+      descricao: Colaborador ativo
+      expressao: "colaborador.situacao == 'ATIVO'"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Colaborador está {colaborador.situacao}; promoção exige vínculo ativo."
+    - id: PRM-02
+      descricao: Cargo de destino possui contrato vigente
+      expressao: "cargo_destino is not None"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Não há contrato de cargo vigente para {evento.dados.cargo_destino}."
+    - id: PRM-03
+      descricao: Promoção sobe de nível
+      expressao: "cargo_destino.nivel > cargo_atual.nivel"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Cargo destino nível {cargo_destino.nivel} não é superior ao atual ({cargo_atual.nivel}). Use movimentação lateral ou reversão."
+    - id: PRM-04
+      descricao: Salto máximo de níveis da política
+      expressao: "cargo_destino.nivel - cargo_atual.nivel <= politica.promocao.max_saltos_nivel"
+      tipo: EXCECIONAVEL
+      aprovadores: [HRBP]
+      base_legal: Política de movimentação interna
+      explicacao_falha: "Salto de {cargo_destino.nivel - cargo_atual.nivel} níveis; a política permite {politica.promocao.max_saltos_nivel}."
+    - id: PRM-05
+      descricao: Interstício mínimo no cargo atual
+      expressao: "meses_no_cargo >= politica.promocao.meses_minimos_no_cargo"
+      tipo: EXCECIONAVEL
+      aprovadores: [HRBP]
+      base_legal: Política de movimentação interna
+      explicacao_falha: "Colaborador está há {meses_no_cargo} meses no cargo; mínimo de {politica.promocao.meses_minimos_no_cargo}."
+    - id: PRM-06
+      descricao: Interstício para cargos executivos
+      expressao: "cargo_destino.segmento != 'EXECUTIVO' or meses_no_cargo >= politica.promocao.meses_minimos_para_executivo"
+      tipo: EXCECIONAVEL
+      aprovadores: [COMITE]
+      base_legal: Política de executivos
+      explicacao_falha: "Promoção a executivo com {meses_no_cargo} meses no cargo; mínimo de {politica.promocao.meses_minimos_para_executivo}."
+    - id: PRM-07
+      descricao: Avaliação de desempenho mínima
+      expressao: "colaborador.avaliacao_desempenho >= politica.promocao.avaliacao_minima"
+      tipo: EXCECIONAVEL
+      aprovadores: [GESTOR, HRBP]
+      explicacao_falha: "Avaliação {colaborador.avaliacao_desempenho} abaixo do mínimo {politica.promocao.avaliacao_minima}."
+    - id: PRM-08
+      descricao: Sem processo disciplinar em aberto
+      expressao: "not colaborador.conduta.processo_disciplinar_aberto"
+      tipo: EXCECIONAVEL
+      aprovadores: [COMPLIANCE]
+      base_legal: Código de conduta
+      explicacao_falha: Há processo disciplinar em aberto.
+    - id: PRM-09
+      descricao: Sem medida restritiva de compliance
+      expressao: "not colaborador.conduta.medida_restritiva_compliance"
+      tipo: BLOQUEANTE
+      base_legal: Política de compliance e PLD
+      explicacao_falha: Colaborador com medida restritiva de compliance não pode ser movimentado.
+    - id: PRM-10
+      descricao: Advertências na janela da política
+      expressao: "advertencias_ultimos_meses(politica.conduta.janela_advertencias_meses) <= politica.conduta.max_advertencias"
+      tipo: EXCECIONAVEL
+      aprovadores: [HRBP]
+      explicacao_falha: "{advertencias_ultimos_meses(politica.conduta.janela_advertencias_meses)} advertência(s) nos últimos {politica.conduta.janela_advertencias_meses} meses."
+    - id: PRM-11
+      descricao: Novo salário não reduz o atual
+      expressao: "(evento.dados.novo_salario or colaborador.salario_base) >= colaborador.salario_base"
+      tipo: BLOQUEANTE
+      base_legal: CF art. 7 VI e CLT art. 468 (irredutibilidade)
+      explicacao_falha: "Novo salário R$ {evento.dados.novo_salario} menor que o atual R$ {colaborador.salario_base}."
+    - id: PRM-12
+      descricao: Aumento dentro do limite da política
+      expressao: "(evento.dados.novo_salario or colaborador.salario_base) <= colaborador.salario_base * (1 + politica.promocao.aumento_max_percentual / 100)"
+      tipo: EXCECIONAVEL
+      aprovadores: [COMITE]
+      explicacao_falha: "Aumento acima de {politica.promocao.aumento_max_percentual}% requer comitê."
+orquestracao:
+  derivar_estado_alvo: true
+  operacoes:
+    - operacao: ALTERAR_CARGO
+      parametros: {cargo: "=evento.dados.cargo_destino"}
+      motivo: O evento de promoção define o cargo de destino.
+    - operacao: ALTERAR_SALARIO
+      quando: "=max(evento.dados.novo_salario or 0, cargo_destino.estado_alvo.faixa_salarial.min) > colaborador.salario_base"
+      parametros:
+        novo_salario: "=max(evento.dados.novo_salario or 0, colaborador.salario_base, cargo_destino.estado_alvo.faixa_salarial.min)"
+      motivo: Novo salário é o maior entre o proposto, o atual (irredutibilidade) e o mínimo da faixa do cargo destino.
+      base_legal: CF art. 7 VI
+    - operacao: AGENDAR_EXAME
+      quando: "=cargo_destino.familia != cargo_atual.familia"
+      parametros: {tipo: MUDANCA_FUNCAO}
+      motivo: Mudança de família de cargo altera riscos ocupacionais.
+      base_legal: NR-7 (exame de mudança de risco)
+    - operacao: REGISTRAR_TREINAMENTO
+      quando: "=cargo_destino.segmento in ['MEDIA_GESTAO', 'EXECUTIVO'] and cargo_atual.segmento not in ['MEDIA_GESTAO', 'EXECUTIVO']"
+      parametros: {curso: TRILHA_LIDERANCA}
+      motivo: Primeira posição de gestão exige trilha de liderança.
+    - operacao: ENVIAR_ESOCIAL
+      parametros: {evento: S-2206, descricao: Alteração contratual de cargo e salário}
+      motivo: Alteração contratual deve ser informada ao eSocial.
+      base_legal: Leiaute eSocial S-2206
+    - operacao: NOTIFICAR
+      parametros: {destinatarios: [COLABORADOR, GESTOR], assunto: Comunicado de promoção}
+      motivo: Comunicação formal da promoção.
+conferencia_plano:
+  regras:
+    - id: CPL-PRM-01
+      descricao: Irredutibilidade salarial no plano
+      expressao: "colaborador.salario_base >= anterior.salario_base"
+      tipo: BLOQUEANTE
+      base_legal: CF art. 7 VI
+      explicacao_falha: "Plano reduz salário de {anterior.salario_base} para {colaborador.salario_base}."
+    - id: CPL-PRM-02
+      descricao: Salário projetado dentro do teto da faixa do cargo destino
+      expressao: "colaborador.salario_base <= cargo_destino.estado_alvo.faixa_salarial.max"
+      tipo: EXCECIONAVEL
+      aprovadores: [COMITE]
+      explicacao_falha: "Salário projetado R$ {colaborador.salario_base} acima do teto R$ {cargo_destino.estado_alvo.faixa_salarial.max}."
+    - id: CPL-PRM-03
+      descricao: Plano aplica o cargo de destino
+      expressao: "colaborador.cargo == evento.dados.cargo_destino"
+      tipo: BLOQUEANTE
+      explicacao_falha: O plano não altera o cargo para o destino do evento.
+auditoria:
+  sla_horas: 48
+  incluir_compliance: true
+  verificacoes:
+    - id: AUD-PRM-01
+      descricao: Cargo aplicado
+      expressao: "colaborador.cargo == evento.dados.cargo_destino"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Cargo final {colaborador.cargo}, esperado {evento.dados.cargo_destino}."
+    - id: AUD-PRM-02
+      descricao: Salário não reduzido
+      expressao: "colaborador.salario_base >= anterior.salario_base"
+      tipo: BLOQUEANTE
+      base_legal: CF art. 7 VI
+      explicacao_falha: Salário final menor que o anterior.
+---
+codigo: PROC_MERITO
+tipo: PROCESSO
+nome: Aumento por mérito
+evento: colaborador.merito_concedido
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+descricao: Aumento salarial por mérito dentro do mesmo cargo.
+evento_schema:
+  obrigatorios: [dados.percentual]
+  colaborador: DEVE_EXISTIR
+elegibilidade:
+  regras:
+    - id: MER-01
+      descricao: Colaborador ativo
+      expressao: "colaborador.situacao == 'ATIVO'"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Colaborador está {colaborador.situacao}."
+    - id: MER-02
+      descricao: Percentual positivo
+      expressao: "evento.dados.percentual > 0"
+      tipo: BLOQUEANTE
+      explicacao_falha: Percentual de mérito deve ser positivo.
+    - id: MER-03
+      descricao: Percentual dentro do limite da política
+      expressao: "evento.dados.percentual <= politica.merito.percentual_max"
+      tipo: EXCECIONAVEL
+      aprovadores: [COMITE]
+      explicacao_falha: "Mérito de {evento.dados.percentual}% acima do limite de {politica.merito.percentual_max}%."
+    - id: MER-04
+      descricao: Avaliação de desempenho mínima para mérito
+      expressao: "colaborador.avaliacao_desempenho >= politica.merito.avaliacao_minima"
+      tipo: EXCECIONAVEL
+      aprovadores: [GESTOR]
+      explicacao_falha: "Avaliação {colaborador.avaliacao_desempenho} abaixo de {politica.merito.avaliacao_minima}."
+    - id: MER-05
+      descricao: Intervalo mínimo desde o último aumento
+      expressao: "meses_desde_ultimo_aumento >= politica.merito.meses_desde_ultimo_aumento"
+      tipo: EXCECIONAVEL
+      aprovadores: [HRBP]
+      explicacao_falha: "Último aumento há {meses_desde_ultimo_aumento} meses; mínimo de {politica.merito.meses_desde_ultimo_aumento}."
+    - id: MER-06
+      descricao: Sem processo disciplinar em aberto
+      expressao: "not colaborador.conduta.processo_disciplinar_aberto"
+      tipo: EXCECIONAVEL
+      aprovadores: [COMPLIANCE]
+      explicacao_falha: Há processo disciplinar em aberto.
+orquestracao:
+  derivar_estado_alvo: true
+  operacoes:
+    - operacao: ALTERAR_SALARIO
+      parametros: {novo_salario: "=round(colaborador.salario_base * (1 + evento.dados.percentual / 100), 2)"}
+      motivo: Aplica o percentual de mérito do evento sobre o salário base.
+    - operacao: ENVIAR_ESOCIAL
+      parametros: {evento: S-2206, descricao: Alteração salarial}
+      motivo: Alteração contratual deve ser informada ao eSocial.
+    - operacao: NOTIFICAR
+      parametros: {destinatarios: [COLABORADOR], assunto: Reconhecimento por mérito}
+      motivo: Comunicação do aumento.
+conferencia_plano:
+  regras:
+    - id: CPL-MER-01
+      descricao: Salário projetado dentro do teto da faixa
+      expressao: "colaborador.salario_base <= cargo_atual.estado_alvo.faixa_salarial.max"
+      tipo: EXCECIONAVEL
+      aprovadores: [HRBP]
+      explicacao_falha: "Salário projetado R$ {colaborador.salario_base} acima do teto R$ {cargo_atual.estado_alvo.faixa_salarial.max}."
+auditoria:
+  sla_horas: 48
+  incluir_compliance: true
+  verificacoes:
+    - id: AUD-MER-01
+      descricao: Salário reajustado pelo percentual
+      expressao: "abs(colaborador.salario_base - round(anterior.salario_base * (1 + evento.dados.percentual / 100), 2)) < 0.02"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Salário final {colaborador.salario_base} difere do esperado."
+---
+codigo: PROC_REVERSAO_CONFIANCA
+tipo: PROCESSO
+nome: Reversão de cargo de confiança
+evento: colaborador.revertido_cargo_confianca
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+descricao: Retorno ao cargo efetivo, sem incorporação da gratificação de função.
+evento_schema:
+  obrigatorios: [dados.cargo_destino, dados.motivo]
+  colaborador: DEVE_EXISTIR
+cargo_alvo: "=evento.dados.cargo_destino"
+elegibilidade:
+  regras:
+    - id: REV-01
+      descricao: Colaborador ativo
+      expressao: "colaborador.situacao == 'ATIVO'"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Colaborador está {colaborador.situacao}."
+    - id: REV-02
+      descricao: Cargo atual é de confiança
+      expressao: "cargo_atual.cargo_confianca == True"
+      tipo: BLOQUEANTE
+      base_legal: CLT art. 468 par. 1
+      explicacao_falha: "Cargo atual {colaborador.cargo} não é de confiança; não há o que reverter."
+    - id: REV-03
+      descricao: Cargo destino não é de confiança
+      expressao: "cargo_destino is not None and cargo_destino.cargo_confianca == False"
+      tipo: BLOQUEANTE
+      explicacao_falha: Cargo destino inexistente ou também de confiança.
+    - id: REV-04
+      descricao: Motivo da reversão documentado
+      expressao: "len(evento.dados.motivo or '') >= 15"
+      tipo: EXCECIONAVEL
+      aprovadores: [JURIDICO]
+      base_legal: Prevenção de alteração contratual lesiva (CLT art. 468)
+      explicacao_falha: Motivo da reversão ausente ou insuficiente.
+orquestracao:
+  derivar_estado_alvo: true
+  operacoes:
+    - operacao: ALTERAR_CARGO
+      parametros: {cargo: "=evento.dados.cargo_destino"}
+      motivo: Reversão ao cargo efetivo informado no evento.
+      base_legal: CLT art. 468 par. 1
+    - operacao: ENVIAR_ESOCIAL
+      parametros: {evento: S-2206, descricao: Reversão ao cargo efetivo}
+      motivo: Alteração contratual deve ser informada ao eSocial.
+    - operacao: NOTIFICAR
+      parametros: {destinatarios: [COLABORADOR, GESTOR], assunto: Reversão de função}
+      motivo: Comunicação formal da reversão.
+conferencia_plano:
+  regras:
+    - id: CPL-REV-01
+      descricao: Salário base preservado
+      expressao: "colaborador.salario_base >= anterior.salario_base"
+      tipo: BLOQUEANTE
+      base_legal: CF art. 7 VI
+      explicacao_falha: O plano reduz o salário base.
+    - id: CPL-REV-02
+      descricao: Gratificação de função removida, sem incorporação
+      expressao: "not possui_verba('GRAT_FUNCAO') and not possui_verba('GRAT_GESTAO')"
+      tipo: ALERTA
+      base_legal: CLT art. 468 par. 2 (Lei 13.467/2017)
+      explicacao_falha: Gratificação permanece no plano após a reversão.
+auditoria:
+  sla_horas: 48
+  incluir_compliance: true
+  verificacoes:
+    - id: AUD-REV-01
+      descricao: Jornada voltou a 6 horas
+      expressao: "colaborador.jornada_horas == norma.jornada_bancario_horas"
+      tipo: BLOQUEANTE
+      base_legal: CLT art. 224
+      explicacao_falha: "Jornada final {colaborador.jornada_horas}h."
+---
+codigo: PROC_TRANSFERENCIA
+tipo: PROCESSO
+nome: Transferência
+evento: colaborador.transferido
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+descricao: Transferência de unidade, com ou sem mudança de município e de base sindical.
+evento_schema:
+  obrigatorios: [dados.unidade, dados.cidade, dados.uf]
+  colaborador: DEVE_EXISTIR
+elegibilidade:
+  regras:
+    - id: TRF-01
+      descricao: Colaborador ativo
+      expressao: "colaborador.situacao == 'ATIVO'"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Colaborador está {colaborador.situacao}."
+    - id: TRF-02
+      descricao: Anuência para mudança de domicílio
+      expressao: "evento.dados.cidade == colaborador.cidade or evento.dados.anuencia_colaborador == True or cargo_atual.cargo_confianca == True"
+      tipo: BLOQUEANTE
+      base_legal: CLT art. 469 caput e par. 1
+      explicacao_falha: Transferência com mudança de município exige anuência do colaborador (exceto cargo de confiança).
+    - id: TRF-03
+      descricao: Dirigente sindical não pode ser transferido para fora da base
+      expressao: "not estabilidade_ativa('DIRIGENTE_SINDICAL') or sindicato_da_uf(evento.dados.uf) == colaborador.sindicato"
+      tipo: BLOQUEANTE
+      base_legal: CLT art. 543
+      explicacao_falha: Dirigente sindical não pode ser transferido para fora da base territorial.
+    - id: TRF-04
+      descricao: Tempo mínimo na unidade atual
+      expressao: "meses_na_unidade >= politica.transferencia.meses_minimos_na_unidade"
+      tipo: EXCECIONAVEL
+      aprovadores: [GESTOR]
+      explicacao_falha: "Colaborador está há {meses_na_unidade} meses na unidade; mínimo de {politica.transferencia.meses_minimos_na_unidade}."
+orquestracao:
+  derivar_estado_alvo: true
+  operacoes:
+    - operacao: ALTERAR_LOTACAO
+      parametros:
+        unidade: "=evento.dados.unidade"
+        cidade: "=evento.dados.cidade"
+        uf: "=evento.dados.uf"
+        centro_custo: "=evento.dados.centro_custo or colaborador.centro_custo"
+      motivo: O evento define a nova lotação.
+    - operacao: ALTERAR_GESTOR
+      quando: "=evento.dados.gestor_id is not None and evento.dados.gestor_id != colaborador.gestor_id"
+      parametros: {gestor_id: "=evento.dados.gestor_id"}
+      motivo: A nova unidade tem outro gestor imediato.
+    - operacao: ADICIONAR_VERBA
+      quando: "=evento.dados.provisoria == True and evento.dados.cidade != colaborador.cidade"
+      parametros:
+        codigo: ADICIONAL_TRANSFERENCIA
+        nome: Adicional de transferência
+        valor: "=round(colaborador.salario_base * norma.adicional_transferencia_percentual / 100, 2)"
+        recorrente: true
+        origem: EVENTO
+      motivo: Transferência provisória com mudança de domicílio gera adicional de 25% enquanto durar.
+      base_legal: CLT art. 469 par. 3
+    - operacao: ENVIAR_ESOCIAL
+      parametros: {evento: S-2206, descricao: Alteração de local de trabalho}
+      motivo: Alteração contratual deve ser informada ao eSocial.
+    - operacao: NOTIFICAR
+      parametros: {destinatarios: [COLABORADOR, GESTOR], assunto: Comunicado de transferência}
+      motivo: Comunicação formal da transferência.
+conferencia_plano:
+  regras:
+    - id: CPL-TRF-01
+      descricao: Lotação projetada igual à do evento
+      expressao: "colaborador.unidade == evento.dados.unidade and colaborador.uf == evento.dados.uf"
+      tipo: BLOQUEANTE
+      explicacao_falha: Plano não aplica a lotação do evento.
+auditoria:
+  sla_horas: 72
+  incluir_compliance: true
+  verificacoes:
+    - id: AUD-TRF-01
+      descricao: Lotação aplicada
+      expressao: "colaborador.unidade == evento.dados.unidade"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Unidade final {colaborador.unidade}."
+---
+codigo: PROC_DESLIGAMENTO
+tipo: PROCESSO
+nome: Desligamento
+evento: colaborador.desligado
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+descricao: Encerramento do vínculo, com garden leave para executivos quando aplicável.
+evento_schema:
+  obrigatorios: [dados.tipo]
+  colaborador: DEVE_EXISTIR
+elegibilidade:
+  regras:
+    - id: DSL-01
+      descricao: Colaborador ainda não desligado
+      expressao: "colaborador.situacao not in ['DESLIGADO', 'GARDEN_LEAVE']"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Colaborador já está {colaborador.situacao}."
+    - id: DSL-02
+      descricao: Tipo de desligamento válido
+      expressao: "evento.dados.tipo in ['SEM_JUSTA_CAUSA', 'PEDIDO_DEMISSAO', 'JUSTA_CAUSA', 'ACORDO_484A']"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Tipo {evento.dados.tipo} desconhecido."
+    - id: DSL-03
+      descricao: Estabilidade da gestante
+      expressao: "evento.dados.tipo in ['PEDIDO_DEMISSAO', 'JUSTA_CAUSA'] or not estabilidade_ativa('GESTANTE')"
+      tipo: BLOQUEANTE
+      base_legal: ADCT art. 10 II b
+      explicacao_falha: Colaboradora gestante ou em período de estabilidade não pode ser dispensada sem justa causa.
+    - id: DSL-04
+      descricao: Estabilidade acidentária
+      expressao: "evento.dados.tipo in ['PEDIDO_DEMISSAO', 'JUSTA_CAUSA'] or not estabilidade_ativa('ACIDENTE_TRABALHO')"
+      tipo: BLOQUEANTE
+      base_legal: Lei 8.213/1991 art. 118
+      explicacao_falha: Estabilidade de 12 meses após retorno de acidente de trabalho em vigor.
+    - id: DSL-05
+      descricao: Estabilidade de membro da CIPA
+      expressao: "evento.dados.tipo in ['PEDIDO_DEMISSAO', 'JUSTA_CAUSA'] or not estabilidade_ativa('CIPA')"
+      tipo: BLOQUEANTE
+      base_legal: ADCT art. 10 II a
+      explicacao_falha: Membro eleito da CIPA com estabilidade em vigor.
+    - id: DSL-06
+      descricao: Estabilidade de dirigente sindical
+      expressao: "evento.dados.tipo == 'PEDIDO_DEMISSAO' or not estabilidade_ativa('DIRIGENTE_SINDICAL')"
+      tipo: BLOQUEANTE
+      base_legal: CLT art. 543 par. 3 (justa causa exige inquérito judicial)
+      explicacao_falha: Dirigente sindical só pode ser dispensado por falta grave apurada em inquérito judicial.
+    - id: DSL-07
+      descricao: Estabilidade pré-aposentadoria da CCT
+      expressao: "evento.dados.tipo in ['PEDIDO_DEMISSAO', 'JUSTA_CAUSA'] or not estabilidade_ativa('PRE_APOSENTADORIA')"
+      tipo: EXCECIONAVEL
+      aprovadores: [JURIDICO]
+      base_legal: CCT cláusula de estabilidade pré-aposentadoria (ilustrativa)
+      explicacao_falha: Colaborador em período de pré-aposentadoria; dispensa exige parecer jurídico e eventual indenização.
+    - id: DSL-08
+      descricao: Contrato não suspenso por afastamento
+      expressao: "colaborador.situacao != 'AFASTADO' or evento.dados.tipo == 'PEDIDO_DEMISSAO'"
+      tipo: BLOQUEANTE
+      base_legal: CLT art. 471 a 476 (suspensão e interrupção)
+      explicacao_falha: Colaborador afastado; o contrato está suspenso ou interrompido.
+    - id: DSL-09
+      descricao: Justa causa exige falta grave registrada
+      expressao: "evento.dados.tipo != 'JUSTA_CAUSA' or evento.dados.falta_grave_registrada == True"
+      tipo: EXCECIONAVEL
+      aprovadores: [JURIDICO]
+      base_legal: CLT art. 482
+      explicacao_falha: Justa causa sem registro de falta grave e apuração.
+orquestracao:
+  derivar_estado_alvo: true
+  operacoes:
+    - operacao: ALTERAR_SITUACAO
+      parametros:
+        situacao: "=('GARDEN_LEAVE' if possui_clausula('GARDEN_LEAVE') and evento.dados.tipo != 'JUSTA_CAUSA' else 'DESLIGADO')"
+        motivo: "=evento.dados.tipo"
+      motivo: Executivos com cláusula de garden leave entram em garden leave; os demais são desligados.
+    - operacao: INICIAR_GARDEN_LEAVE
+      quando: "=possui_clausula('GARDEN_LEAVE') and evento.dados.tipo != 'JUSTA_CAUSA'"
+      parametros: {dias: "=parametro_clausula('GARDEN_LEAVE', 'dias')"}
+      motivo: Contrato do cargo executivo prevê garden leave remunerado antes do encerramento.
+      base_legal: Cláusula contratual de garden leave
+    - operacao: CALCULAR_RESCISAO
+      parametros:
+        tipo: "=evento.dados.tipo"
+        aviso: "=evento.dados.aviso or 'INDENIZADO'"
+      motivo: Cálculo das verbas rescisórias conforme o tipo de desligamento.
+      base_legal: CLT art. 477 e 487; Lei 12.506/2011
+    - operacao: AGENDAR_EXAME
+      parametros: {tipo: DEMISSIONAL}
+      motivo: Exame demissional obrigatório.
+      base_legal: NR-7
+    - operacao: ENVIAR_ESOCIAL
+      quando: "=not (possui_clausula('GARDEN_LEAVE') and evento.dados.tipo != 'JUSTA_CAUSA')"
+      parametros: {evento: S-2299, descricao: Desligamento}
+      motivo: Desligamento deve ser informado ao eSocial.
+    - operacao: ENCERRAR_VINCULO
+      quando: "=not (possui_clausula('GARDEN_LEAVE') and evento.dados.tipo != 'JUSTA_CAUSA')"
+      parametros: {tipo: "=evento.dados.tipo"}
+      motivo: Encerramento do vínculo na data efetiva.
+    - operacao: NOTIFICAR
+      parametros: {destinatarios: [COLABORADOR, GESTOR, SEGURANCA_INFORMACAO], assunto: Comunicado de desligamento}
+      motivo: Comunicação formal e gatilho de segurança da informação.
+conferencia_plano:
+  regras:
+    - id: CPL-DSL-01
+      descricao: Plano encerra ou suspende o acesso a sistemas
+      expressao: "len(colaborador.acessos) == 0"
+      tipo: BLOQUEANTE
+      base_legal: Política de segurança da informação
+      explicacao_falha: "Plano mantém {len(colaborador.acessos)} acesso(s) ativos."
+auditoria:
+  sla_horas: 24
+  incluir_compliance: true
+  verificacoes:
+    - id: AUD-DSL-01
+      descricao: Situação final de desligado ou garden leave
+      expressao: "colaborador.situacao in ['DESLIGADO', 'GARDEN_LEAVE']"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Situação final {colaborador.situacao}."
+    - id: AUD-DSL-02
+      descricao: Rescisão calculada
+      expressao: "operacao_executada('CALCULAR_RESCISAO')"
+      tipo: BLOQUEANTE
+      base_legal: CLT art. 477
+      explicacao_falha: Cálculo de rescisão não executado.
+    - id: AUD-DSL-03
+      descricao: Equipamentos recolhidos
+      expressao: "len(colaborador.equipamentos) == 0"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Restam {len(colaborador.equipamentos)} equipamento(s) com o colaborador."
+---
+codigo: PROC_AFASTAMENTO
+tipo: PROCESSO
+nome: Afastamento
+evento: colaborador.afastado
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+descricao: Afastamento por doença, acidente de trabalho ou licença-maternidade.
+evento_schema:
+  obrigatorios: [dados.tipo, dados.inicio]
+  colaborador: DEVE_EXISTIR
+elegibilidade:
+  regras:
+    - id: AFT-01
+      descricao: Colaborador ativo
+      expressao: "colaborador.situacao == 'ATIVO'"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Colaborador está {colaborador.situacao}."
+    - id: AFT-02
+      descricao: Tipo de afastamento válido
+      expressao: "evento.dados.tipo in ['DOENCA', 'ACIDENTE_TRABALHO', 'MATERNIDADE']"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Tipo {evento.dados.tipo} desconhecido."
+    - id: AFT-03
+      descricao: Licença-maternidade para colaborador do sexo masculino exige análise (adoção ou falecimento da mãe)
+      expressao: "evento.dados.tipo != 'MATERNIDADE' or colaborador.genero == 'F'"
+      tipo: EXCECIONAVEL
+      aprovadores: [HRBP]
+      base_legal: CLT art. 392-A e 392-B
+      explicacao_falha: Licença-maternidade solicitada para colaborador do sexo masculino.
+orquestracao:
+  derivar_estado_alvo: true
+  operacoes:
+    - operacao: ALTERAR_SITUACAO
+      parametros:
+        situacao: AFASTADO
+        motivo: "=evento.dados.tipo"
+        inicio: "=evento.dados.inicio"
+        previsao_retorno: "=evento.dados.previsao_retorno"
+      motivo: O evento informa o início do afastamento.
+    - operacao: CONCEDER_LICENCA
+      quando: "=evento.dados.tipo == 'MATERNIDADE'"
+      parametros: {tipo: MATERNIDADE, dias: "=norma.licenca_maternidade_dias"}
+      motivo: Licença-maternidade estendida (empresa cidadã).
+      base_legal: CLT art. 392 e Lei 11.770/2008
+    - operacao: REGISTRAR_ESTABILIDADE
+      quando: "=evento.dados.tipo == 'MATERNIDADE'"
+      parametros:
+        tipo: GESTANTE
+        inicio: "=evento.dados.inicio"
+        fim: "=somar_meses(evento.dados.inicio, 5)"
+        base_legal: ADCT art. 10 II b
+      motivo: Estabilidade da gestante até 5 meses após o parto.
+      base_legal: ADCT art. 10 II b
+    - operacao: ENVIAR_ESOCIAL
+      quando: "=evento.dados.tipo == 'ACIDENTE_TRABALHO'"
+      parametros: {evento: S-2210, descricao: Comunicação de acidente de trabalho (CAT)}
+      motivo: Acidente de trabalho exige CAT.
+      base_legal: Lei 8.213/1991 art. 22
+    - operacao: ENVIAR_ESOCIAL
+      parametros: {evento: S-2230, descricao: Início de afastamento temporário}
+      motivo: Afastamento deve ser informado ao eSocial.
+    - operacao: NOTIFICAR
+      parametros: {destinatarios: [GESTOR], assunto: Afastamento de colaborador}
+      motivo: Gestor precisa redistribuir a carteira e as atividades.
+conferencia_plano:
+  regras:
+    - id: CPL-AFT-01
+      descricao: Situação projetada de afastado
+      expressao: "colaborador.situacao == 'AFASTADO'"
+      tipo: BLOQUEANTE
+      explicacao_falha: Plano não registra o afastamento.
+auditoria:
+  sla_horas: 24
+  incluir_compliance: true
+  verificacoes:
+    - id: AUD-AFT-01
+      descricao: Afastamento registrado
+      expressao: "colaborador.situacao == 'AFASTADO' and colaborador.afastamento is not None"
+      tipo: BLOQUEANTE
+      explicacao_falha: Afastamento não registrado no cadastro.
+---
+codigo: PROC_RETORNO
+tipo: PROCESSO
+nome: Retorno de afastamento
+evento: colaborador.retornou_afastamento
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+descricao: Retorno ao trabalho após afastamento.
+evento_schema:
+  obrigatorios: []
+  colaborador: DEVE_EXISTIR
+elegibilidade:
+  regras:
+    - id: RET-01
+      descricao: Colaborador está afastado
+      expressao: "colaborador.situacao == 'AFASTADO'"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Colaborador está {colaborador.situacao}; não há afastamento a encerrar."
+orquestracao:
+  derivar_estado_alvo: true
+  operacoes:
+    - operacao: ALTERAR_SITUACAO
+      parametros: {situacao: ATIVO, motivo: RETORNO}
+      motivo: O evento informa o retorno ao trabalho.
+    - operacao: AGENDAR_EXAME
+      quando: "=dias_afastado >= 30"
+      parametros: {tipo: RETORNO_TRABALHO}
+      motivo: Afastamento de 30 dias ou mais exige exame de retorno.
+      base_legal: NR-7
+    - operacao: REGISTRAR_ESTABILIDADE
+      quando: "=colaborador.afastamento.tipo == 'ACIDENTE_TRABALHO'"
+      parametros:
+        tipo: ACIDENTE_TRABALHO
+        inicio: "=hoje"
+        fim: "=somar_meses(hoje, norma.estabilidade_acidentaria_meses)"
+        base_legal: Lei 8.213/1991 art. 118
+      motivo: Retorno de acidente de trabalho gera estabilidade de 12 meses.
+      base_legal: Lei 8.213/1991 art. 118
+    - operacao: ENVIAR_ESOCIAL
+      parametros: {evento: S-2230, descricao: Término de afastamento temporário}
+      motivo: Fim do afastamento deve ser informado ao eSocial.
+    - operacao: NOTIFICAR
+      parametros: {destinatarios: [GESTOR, COLABORADOR], assunto: Retorno ao trabalho}
+      motivo: Comunicação de retorno.
+conferencia_plano:
+  regras: []
+auditoria:
+  sla_horas: 24
+  incluir_compliance: true
+  verificacoes:
+    - id: AUD-RET-01
+      descricao: Colaborador ativo e acessos restabelecidos
+      expressao: "colaborador.situacao == 'ATIVO' and len(colaborador.acessos) > 1"
+      tipo: BLOQUEANTE
+      explicacao_falha: Colaborador não está ativo ou acessos não foram restabelecidos.
+---
+codigo: PROC_REAJUSTE_CCT
+tipo: PROCESSO
+nome: Reajuste da convenção coletiva (coletivo)
+evento: cct.reajuste_aplicado
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+descricao: Evento coletivo da data-base; gera um caso individual por colaborador abrangido.
+evento_schema:
+  obrigatorios: [dados.percentual]
+  colaborador: NAO_SE_APLICA
+coletivo:
+  gera_evento: cct.reajuste_individual
+  selecao: "colaborador.situacao != 'DESLIGADO' and (vazio(evento.dados.sindicatos) or colaborador.sindicato in evento.dados.sindicatos)"
+  dados:
+    percentual: "=evento.dados.percentual"
+---
+codigo: PROC_REAJUSTE_INDIVIDUAL
+tipo: PROCESSO
+nome: Reajuste da convenção coletiva (individual)
+evento: cct.reajuste_individual
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+descricao: Aplica o percentual da CCT ao salário e recalcula gratificações dependentes.
+evento_schema:
+  obrigatorios: [dados.percentual]
+  colaborador: DEVE_EXISTIR
+elegibilidade:
+  regras:
+    - id: RCT-01
+      descricao: Colaborador com vínculo
+      expressao: "colaborador.situacao != 'DESLIGADO'"
+      tipo: BLOQUEANTE
+      explicacao_falha: Colaborador desligado não recebe reajuste.
+    - id: RCT-02
+      descricao: Percentual positivo
+      expressao: "evento.dados.percentual > 0"
+      tipo: BLOQUEANTE
+      explicacao_falha: Percentual inválido.
+orquestracao:
+  derivar_estado_alvo: true
+  operacoes:
+    - operacao: APLICAR_REAJUSTE
+      parametros: {percentual: "=evento.dados.percentual"}
+      motivo: Reajuste da data-base previsto na CCT.
+      base_legal: CCT cláusula de reajuste (ilustrativa)
+conferencia_plano:
+  regras:
+    - id: CPL-RCT-01
+      descricao: Salário reajustado exatamente pelo percentual
+      expressao: "abs(colaborador.salario_base - round(anterior.salario_base * (1 + evento.dados.percentual / 100), 2)) < 0.02"
+      tipo: BLOQUEANTE
+      explicacao_falha: Salário projetado não corresponde ao percentual da CCT.
+auditoria:
+  sla_horas: 72
+  incluir_compliance: true
+  verificacoes:
+    - id: AUD-RCT-01
+      descricao: Salário reajustado
+      expressao: "colaborador.salario_base > anterior.salario_base"
+      tipo: BLOQUEANTE
+      explicacao_falha: Salário não foi reajustado.
+---
+codigo: PROC_INCLUSAO_DEPENDENTE
+tipo: PROCESSO
+nome: Inclusão de dependente (nascimento)
+evento: colaborador.dependente_incluido
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+descricao: Inclusão de dependente com efeitos em auxílio-creche e licença-paternidade.
+evento_schema:
+  obrigatorios: [dados.nome, dados.data_nascimento]
+  colaborador: DEVE_EXISTIR
+elegibilidade:
+  regras:
+    - id: DEP-01
+      descricao: Colaborador com vínculo ativo ou afastado
+      expressao: "colaborador.situacao in ['ATIVO', 'AFASTADO']"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Colaborador está {colaborador.situacao}."
+    - id: DEP-02
+      descricao: Data de nascimento não futura
+      expressao: "dias_entre(evento.dados.data_nascimento, hoje) >= 0"
+      tipo: BLOQUEANTE
+      explicacao_falha: Data de nascimento no futuro.
+    - id: DEP-03
+      descricao: Certidão de nascimento apresentada
+      expressao: "evento.dados.certidao_apresentada == True"
+      tipo: EXCECIONAVEL
+      aprovadores: [HRBP]
+      explicacao_falha: Certidão de nascimento não apresentada.
+orquestracao:
+  derivar_estado_alvo: true
+  operacoes:
+    - operacao: INCLUIR_DEPENDENTE
+      parametros:
+        nome: "=evento.dados.nome"
+        parentesco: "=evento.dados.parentesco or 'FILHO'"
+        data_nascimento: "=evento.dados.data_nascimento"
+      motivo: Evento informa o nascimento do dependente.
+    - operacao: CONCEDER_LICENCA
+      quando: "=colaborador.genero == 'M' and dias_entre(evento.dados.data_nascimento, hoje) <= norma.licenca_paternidade_dias"
+      parametros: {tipo: PATERNIDADE, dias: "=norma.licenca_paternidade_dias"}
+      motivo: Licença-paternidade estendida (empresa cidadã).
+      base_legal: ADCT art. 10 par. 1 e Lei 13.257/2016
+    - operacao: ENVIAR_ESOCIAL
+      parametros: {evento: S-2205, descricao: Alteração cadastral (dependente)}
+      motivo: Inclusão de dependente altera o cadastro no eSocial.
+conferencia_plano:
+  regras: []
+auditoria:
+  sla_horas: 72
+  incluir_compliance: true
+  verificacoes:
+    - id: AUD-DEP-01
+      descricao: Dependente incluído
+      expressao: "len(colaborador.dependentes) > len(anterior.dependentes)"
+      tipo: BLOQUEANTE
+      explicacao_falha: Dependente não consta no cadastro.
+---
+codigo: PROC_BONUS
+tipo: PROCESSO
+nome: Concessão de bônus
+evento: colaborador.bonus_concedido
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+descricao: Nova verba de bônus pontual.
+evento_schema:
+  obrigatorios: [dados.valor]
+  colaborador: DEVE_EXISTIR
+elegibilidade:
+  regras:
+    - id: BON-01
+      descricao: Colaborador ativo
+      expressao: "colaborador.situacao == 'ATIVO'"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Colaborador está {colaborador.situacao}."
+    - id: BON-02
+      descricao: Sem medida restritiva de compliance (malus)
+      expressao: "not colaborador.conduta.medida_restritiva_compliance"
+      tipo: BLOQUEANTE
+      base_legal: Resolução CMN 3.921/2010 (remuneração de administradores, ilustrativa)
+      explicacao_falha: Medida restritiva de compliance impede remuneração variável.
+    - id: BON-03
+      descricao: Avaliação mínima para bônus
+      expressao: "colaborador.avaliacao_desempenho >= politica.bonus.avaliacao_minima"
+      tipo: EXCECIONAVEL
+      aprovadores: [GESTOR]
+      explicacao_falha: "Avaliação {colaborador.avaliacao_desempenho} abaixo de {politica.bonus.avaliacao_minima}."
+    - id: BON-04
+      descricao: Valor dentro do múltiplo de salários sem comitê
+      expressao: "evento.dados.valor <= colaborador.salario_base * politica.bonus.multiplo_salario_max_sem_comite"
+      tipo: EXCECIONAVEL
+      aprovadores: [COMITE]
+      explicacao_falha: "Bônus de R$ {evento.dados.valor} acima de {politica.bonus.multiplo_salario_max_sem_comite} salários."
+    - id: BON-05
+      descricao: Sem processo disciplinar em aberto
+      expressao: "not colaborador.conduta.processo_disciplinar_aberto"
+      tipo: EXCECIONAVEL
+      aprovadores: [COMPLIANCE]
+      explicacao_falha: Há processo disciplinar em aberto.
+orquestracao:
+  derivar_estado_alvo: false
+  operacoes:
+    - operacao: ADICIONAR_VERBA
+      parametros:
+        codigo: BONUS
+        nome: Bônus
+        valor: "=evento.dados.valor"
+        recorrente: false
+        origem: EVENTO
+        competencia: "=evento.dados.competencia or hoje"
+      motivo: O evento concede bônus pontual.
+    - operacao: NOTIFICAR
+      parametros: {destinatarios: [COLABORADOR], assunto: Concessão de bônus}
+      motivo: Comunicação do bônus.
+conferencia_plano:
+  regras: []
+auditoria:
+  sla_horas: 72
+  incluir_compliance: false
+  verificacoes:
+    - id: AUD-BON-01
+      descricao: Verba de bônus lançada
+      expressao: "possui_verba('BONUS')"
+      tipo: BLOQUEANTE
+      explicacao_falha: Verba de bônus não lançada.
+---
+codigo: PROC_MUDANCA_JORNADA
+tipo: PROCESSO
+nome: Mudança de jornada
+evento: colaborador.jornada_alterada
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+descricao: Alteração da jornada contratual.
+evento_schema:
+  obrigatorios: [dados.horas]
+  colaborador: DEVE_EXISTIR
+elegibilidade:
+  regras:
+    - id: JOR-01
+      descricao: Colaborador ativo
+      expressao: "colaborador.situacao == 'ATIVO'"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Colaborador está {colaborador.situacao}."
+    - id: JOR-02
+      descricao: Bancário sem cargo de confiança não pode ter jornada acima de 6 horas
+      expressao: "cargo_atual.cargo_confianca == True or evento.dados.horas <= norma.jornada_bancario_horas"
+      tipo: BLOQUEANTE
+      base_legal: CLT art. 224 caput
+      explicacao_falha: "Jornada de {evento.dados.horas}h para cargo sem confiança viola o art. 224."
+    - id: JOR-03
+      descricao: Limite constitucional de 8 horas diárias
+      expressao: "evento.dados.horas <= 8"
+      tipo: BLOQUEANTE
+      base_legal: CF art. 7 XIII
+      explicacao_falha: "Jornada de {evento.dados.horas}h acima de 8h."
+orquestracao:
+  derivar_estado_alvo: false
+  operacoes:
+    - operacao: ALTERAR_JORNADA
+      parametros: {horas: "=evento.dados.horas", regime: "=colaborador.regime_jornada"}
+      motivo: O evento informa a nova jornada.
+conferencia_plano:
+  regras: []
+auditoria:
+  sla_horas: 48
+  incluir_compliance: true
+  verificacoes: []
+---
+codigo: PROC_CONFORMIDADE
+tipo: PROCESSO
+nome: Conferência de conformidade
+evento: auditoria.conformidade_solicitada
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+descricao: Compara o estado atual com o contrato vigente e remedia divergências.
+evento_schema:
+  obrigatorios: []
+  colaborador: DEVE_EXISTIR
+elegibilidade:
+  regras: []
+orquestracao:
+  derivar_estado_alvo: true
+  operacoes: []
+conferencia_plano:
+  regras: []
+auditoria:
+  sla_horas: 72
+  incluir_compliance: true
+  verificacoes: []
+---
+codigo: PROC_CONFORMIDADE_COLETIVA
+tipo: PROCESSO
+nome: Conferência de conformidade (coletiva)
+evento: auditoria.conformidade_coletiva
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+descricao: Dispara a conferência de conformidade para todos os colaboradores de um cargo (ou todos).
+evento_schema:
+  obrigatorios: []
+  colaborador: NAO_SE_APLICA
+coletivo:
+  gera_evento: auditoria.conformidade_solicitada
+  selecao: "colaborador.situacao != 'DESLIGADO' and (vazio(evento.dados.cargo) or colaborador.cargo == evento.dados.cargo)"
+  dados:
+    motivo: "=evento.dados.motivo or 'Conferência coletiva'"

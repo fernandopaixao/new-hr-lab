@@ -66,7 +66,7 @@ Todas as camadas são alimentadas pelos mesmos dados: o documento do caso e o lo
 | `hrlab_agent_up` | - |
 | `hrlab_index_documents`, `hrlab_index_dirty`, `hrlab_index_simulated` | - |
 
-Para coletar, aponte um Prometheus para `http://localhost:8080/api/metrics`.
+Para coletar, aponte um Prometheus para `http://localhost:8580/api/metrics`.
 
 ## Log de decisões
 

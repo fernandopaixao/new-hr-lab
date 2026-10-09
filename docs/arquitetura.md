@@ -6,7 +6,7 @@
                          navegador
                              |
                      +---------------+
-                     |   frontend    |  React + Vite, servido por nginx (porta 8080)
+                     |   frontend    |  React + Vite, servido por nginx (porta 8580)
                      |  /api proxy   |  SSE sem buffer em /api/stream
                      +-------+-------+
                              |

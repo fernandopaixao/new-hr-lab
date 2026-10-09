@@ -1,6 +1,6 @@
 # API
 
-A API fica em `http://localhost:8080/api` (pelo nginx do frontend) ou `http://localhost:8000/api` no desenvolvimento local. A documentação interativa gerada pelo FastAPI está em `/docs` na porta da API.
+A API fica em `http://localhost:8580/api` (pelo nginx do frontend) ou `http://localhost:8000/api` no desenvolvimento local. A documentação interativa gerada pelo FastAPI está em `/docs` na porta da API.
 
 As rotas que alteram algo aceitam o cabeçalho `X-Persona` (padrão `OPERADOR`). Ele não autentica ninguém: só registra quem fez a ação no log ([ADR 0009](adr/0009-personas-sem-autenticacao.md)).
 
@@ -114,6 +114,6 @@ Exemplo de evento:
 Exemplo:
 
 ```bash
-curl -s localhost:8080/api/ask -H 'Content-Type: application/json' \
+curl -s localhost:8580/api/ask -H 'Content-Type: application/json' \
   -d '{"pergunta": "quais regras mais barram promoções?"}' | jq .resposta
 ```

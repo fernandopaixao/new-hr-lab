@@ -2,7 +2,7 @@
 #
 # Uso basico (Ollama ja rodando na maquina ou na rede):
 #   docker compose up -d --build
-#   abra http://localhost:8080
+#   abra http://localhost:8580
 #
 # Ollama em container (CPU), com download automatico do modelo:
 #   docker compose --profile ollama up -d --build
@@ -66,7 +66,7 @@ services:
     build: ./frontend
     restart: unless-stopped
     ports:
-      - "${UI_PORT:-8080}:80"
+      - "${UI_PORT:-8580}:80"
     depends_on:
       api:
         condition: service_healthy
@@ -78,7 +78,7 @@ services:
     volumes:
       - ollama:/root/.ollama
     ports:
-      - "11434:11434"
+      - "${OLLAMA_PORT:-11434}:11434"
 
   ollama-pull:
     image: ollama/ollama:latest

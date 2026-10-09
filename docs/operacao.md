@@ -118,7 +118,7 @@ Todas podem ser alteradas na tela Configurações sem reiniciar; as variáveis d
 | Modelo das perguntas | `ASK_MODEL` | vazio (o do conferente) | Permite um modelo menor para perguntas. |
 | Documentos por pergunta | `ASK_TOP_K` | 8 | Quantos documentos a busca semântica entrega ao agente. |
 
-Variáveis só de ambiente: as chaves de API (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` ou `GOOGLE_API_KEY`), que têm prioridade sobre a chave salva pelo assistente, `REDIS_URL`, `DATA_DIR`, `STAGE_CONCURRENCY` (casos simultâneos por estágio em cada worker, padrão 4) e `WORKER_NAME` (nome fixo de consumidor, fora do Docker).
+Variáveis só de ambiente: as chaves de API (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` ou `GOOGLE_API_KEY`), que têm prioridade sobre a chave salva pelo assistente, `REDIS_URL`, `DATA_DIR`, `STAGE_CONCURRENCY` (casos simultâneos por estágio em cada worker, padrão 4) `WORKER_NAME` (nome fixo de consumidor, fora do Docker) e `AGENDA_INTERVAL_S` (segundos entre conferências da agenda de vigências em cada worker, padrão 5).
 
 ## Rotina de demonstração
 
@@ -129,6 +129,7 @@ Variáveis só de ambiente: as chaves de API (`ANTHROPIC_API_KEY`, `OPENAI_API_K
 5. Em **Contratos**, mude o interstício da política, salve como nova versão e dispare o cenário de novo.
 6. Rode a **suíte completa** e compare esperado e obtido.
 7. Abra **Visão** para o painel e **Perguntar** para perguntas como "quais regras mais barram promoções?".
+8. Dispare "Inclusão no programa de alto potencial" em **Cenários** e abra o perfil da pessoa: o programa aparece com o tempo que falta, o aviso e o vencimento agendados. Em **Vigências**, avance o relógio (por exemplo, "+1 ano"): a agenda emite o aviso e o vencimento, que passam pela linha e retiram bolsa, mentoria e acesso. "Voltar ao calendário real" desfaz a simulação de data.
 
 ## Depuração
 

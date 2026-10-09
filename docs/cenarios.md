@@ -22,6 +22,10 @@ Gerado a partir de `backend/hrlab/generators/events.py`. Cada cenário escolhe o
 | `nascimento_de_filho` | Nascimento de filho | Dependente, licença-paternidade e auxílio-creche. | Concluído, Concluído com ressalvas |
 | `bonus_padrao` | Bônus padrão | Verba pontual de bônus. | Concluído, Concluído com ressalvas |
 | `merito_com_recalculo_de_gratificacao` | Mérito com recálculo de gratificação | Aumento de 6% recalcula a gratificação de 55%. | Concluído, Concluído com ressalvas |
+| `alto_potencial_inclusao` | Inclusão no programa de alto potencial | Vale 12 meses a partir da data oficial: bolsa, mentoria, plataforma de liderança e vencimento agendado. | Concluído, Concluído com ressalvas |
+| `alto_potencial_vencimento` | Vencimento do programa de alto potencial | Fim da vigência: a linha retira bolsa, mentoria e acesso. | Concluído, Concluído com ressalvas |
+| `alto_potencial_renovacao` | Renovação do programa de alto potencial | Vigência estendida por mais 12 meses; vencimento reagendado. | Concluído, Concluído com ressalvas |
+| `alto_potencial_encerramento` | Encerramento antecipado do programa | Saída do programa antes do fim; concessões retiradas e vencimento cancelado. | Concluído, Concluído com ressalvas |
 | `conformidade_com_divergencia` | Conformidade com divergência | Colaborador com desvio gerado; o plano remedia. | Concluído, Concluído com ressalvas |
 
 ## Exige exceção
@@ -37,6 +41,7 @@ Gerado a partir de `backend/hrlab/generators/events.py`. Cada cenário escolhe o
 | `desligamento_justa_causa_sem_registro` | Justa causa sem registro de falta | Exige parecer jurídico. | Aguardando aprovação |
 | `bonus_acima_do_limite` | Bônus acima de 3 salários | Exige comitê de remuneração. | Aguardando aprovação |
 | `merito_acima_do_limite` | Mérito acima do limite | 15% exige comitê. | Aguardando aprovação |
+| `alto_potencial_avaliacao_baixa` | Alto potencial com avaliação baixa | Avaliação abaixo da política exige o comitê. | Aguardando aprovação |
 
 ## Deve bloquear
 
@@ -55,6 +60,8 @@ Gerado a partir de `backend/hrlab/generators/events.py`. Cada cenário escolhe o
 | `desligamento_membro_cipa` | Desligamento de membro da CIPA | Estabilidade de cipeiro. | Não elegível |
 | `bonus_com_medida_restritiva` | Bônus com medida restritiva | Malus de compliance impede bônus. | Não elegível |
 | `jornada_8h_sem_cargo_de_confianca` | Jornada de 8h sem confiança | Viola o art. 224 da CLT. | Não elegível |
+| `alto_potencial_ja_participa` | Alto potencial para quem já participa | Programa já ativo; o caminho é a renovação. | Não elegível |
+| `alto_potencial_vencimento_antecipado` | Vencimento antes do fim da vigência | Evento de vencimento com 6 meses de vigência pela frente. | Não elegível |
 
 ## Eventos coletivos
 

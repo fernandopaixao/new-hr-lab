@@ -12,7 +12,7 @@ import random
 import traceback
 from typing import Any
 
-from . import agent, engine, logbook as log, shelf
+from . import agent, clock, engine, logbook as log, shelf
 from .contracts import ContractRepo
 from .engine import contract_ref
 from .context import Ctx
@@ -59,7 +59,7 @@ class Pipeline:
         event.setdefault("origem", "manual")
         event.setdefault("dados", {})
         if not event.get("data_efetiva"):
-            event["data_efetiva"] = __import__("datetime").date.today().isoformat()
+            event["data_efetiva"] = await clock.today(self.store)
         case = {
             "id": new_id("caso"), "criado_em": now_ms(), "evento": event, "evento_id": event["id"],
             "evento_tipo": event.get("tipo"), "colaborador_id": event.get("colaborador_id"),

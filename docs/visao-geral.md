@@ -59,8 +59,9 @@ Em todas as fases o caso diz o **próximo passo**: o que acontece agora, quem pr
 
 - Ajustar colaboradores (cargo, datas, salário, conduta, estabilidades, dependentes) e ver como a elegibilidade muda.
 - Alterar contratos (incluir ou remover regras e operações, mudar vigências) e salvar como nova versão, sem tocar no código.
-- Disparar 47 cenários reais, de exceção, de bloqueio, coletivos e de estresse, ou eventos manuais e rajadas.
+- Disparar 54 cenários reais, de exceção, de bloqueio, coletivos e de estresse, ou eventos manuais e rajadas.
 - Pausar a linha ou uma estação, parar antes de um estágio, avançar passo a passo, editar o evento e reprocessar.
 - Decidir exceções com personas diferentes e ver cada decisão registrada.
+- Incluir alguém no programa de alto potencial, avançar o relógio simulado e ver o aviso e o vencimento passarem pela linha e retirarem o que o programa concedia.
 - Injetar falhas para exercitar a compensação, e escalar workers para observar concorrência.
 - Acompanhar a operação no painel Visão e fazer perguntas em linguagem natural sobre todos os eventos.

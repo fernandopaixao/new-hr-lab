@@ -41,6 +41,20 @@ Exemplo de evento:
 | `GET /api/meta` | - | Estágios (com a `saida` de cada um), o que aprovar ou rejeitar provoca em cada estágio (`resultado_aprovacao`), status, personas, tipos de evento, cenários, prateleira e desvios. |
 | `GET /api/health` | - | Verifica a API e o Redis. |
 
+## Vigências e relógio simulado
+
+Veja a [ADR 0023](adr/0023-eventos-com-vigencia.md).
+
+| Método e rota | Corpo | Resultado |
+| --- | --- | --- |
+| `GET /api/clock` | - | `hoje` (data de negócio), `data_real`, `simulado` e quem alterou por último. |
+| `POST /api/clock/advance` | `{dias}` | Avança o relógio simulado e já emite os avisos e vencimentos que ficaram devidos (`emitidos`). |
+| `PUT /api/clock` | `{data}` | Vai para uma data (AAAA-MM-DD); `data: null` volta ao calendário real. Também emite o que ficou devido. |
+| `GET /api/vigencias` | - | Agenda: aviso e vencimento de cada programa ativo, com data, dias até lá e situação (`AGENDADO`, `VENCIDO`, `EMITIDO` com o caso). |
+| `POST /api/vigencias/tick` | - | Confere a agenda agora (os workers também conferem a cada `AGENDA_INTERVAL_S` segundos). |
+
+`GET /api/employees/{id}` traz `programas` (com `dias_restantes` e `aviso_previsto`), `agenda` e `hoje`; `GET /api/stats` e `GET /api/meta` trazem `relogio`.
+
 ## Aprovações
 
 | Método e rota | Corpo ou parâmetros | Resultado |
@@ -75,7 +89,7 @@ Exemplo de evento:
 
 | Método e rota | Corpo | Resultado |
 | --- | --- | --- |
-| `GET /api/scenarios` | - | Os 47 cenários, com o resultado esperado. |
+| `GET /api/scenarios` | - | Os 54 cenários, com o resultado esperado. |
 | `POST /api/scenarios/{id}/generate` | `{enviar, depuracao, breakpoints, semente}` | Prepara os dados e dispara; `enviar: false` só mostra a prévia. |
 | `POST /api/scenarios/burst` | `{quantidade, intervalo_ms, categorias, semente}` | Rajada de até 2000 eventos aleatórios. |
 | `POST /api/scenarios/suite` | `{cenarios, timeout_s}` | Executa a suíte e compara esperado e obtido. |

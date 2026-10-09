@@ -7,14 +7,13 @@ import json
 import random
 import time
 from contextlib import asynccontextmanager
-from datetime import date
 from typing import Any
 
 from fastapi import Body, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, StreamingResponse
 
-from . import agent, apikeys, ask, embeddings as emb, engine, facts as factsmod, indexer, llm, logbook as log, migrations, shelf
+from . import agent, apikeys, ask, clock, embeddings as emb, engine, facts as factsmod, indexer, llm, logbook as log, migrations, shelf, vigencia
 from .config import DEFAULT_SETTINGS, REDIS_URL
 from .context import Ctx
 from .contracts import ContractError, ContractRepo, from_yaml, to_yaml, validate
@@ -50,11 +49,17 @@ EVENT_TEMPLATES: dict[str, dict] = {
     "colaborador.jornada_alterada": {"horas": 6},
     "auditoria.conformidade_solicitada": {"motivo": "Conferência pontual"},
     "auditoria.conformidade_coletiva": {"cargo": "", "motivo": "Varredura"},
+    "colaborador.programa_alto_potencial_iniciado": {"data_oficial": "", "justificativa": "Indicação do comitê de talentos"},
+    "colaborador.programa_renovado": {"programa": "ALTO_POTENCIAL", "meses": 12, "justificativa": "Renovação aprovada pelo comitê"},
+    "colaborador.programa_encerrado": {"programa": "ALTO_POTENCIAL", "motivo": "Desistência do colaborador"},
+    "colaborador.programa_a_vencer": {"programa": "ALTO_POTENCIAL"},
+    "colaborador.programa_expirado": {"programa": "ALTO_POTENCIAL"},
 }
 
 
-def today() -> str:
-    return date.today().isoformat()
+async def today() -> str:
+    """Business date: the simulated clock when set, else the real calendar."""
+    return await clock.today(store)
 
 
 async def bootstrap() -> None:
@@ -101,7 +106,7 @@ async def meta() -> dict:
         "status": STATUS_LABELS, "finais": sorted(FINAL_STATUSES), "personas": PERSONAS,
         "tipos_aprovacao": APPROVAL_TYPE_LABELS, "tipos_evento": await repo.event_types(),
         "templates_evento": EVENT_TEMPLATES, "cenarios": [s.describe() for s in evgen.SCENARIOS],
-        "prateleira": shelf.catalog(), "desvios": [{"id": k, "nome": n} for k, n in DRIFTS], "hoje": today(),
+        "prateleira": shelf.catalog(), "desvios": [{"id": k, "nome": n} for k, n in DRIFTS], "hoje": await today(), "relogio": await clock.state(store),
     }
 
 
@@ -244,6 +249,7 @@ def employee_summary(e: dict, conf: dict | None = None) -> dict:
     out = {k: e.get(k) for k in ("id", "nome", "cargo", "situacao", "salario_base", "unidade", "cidade", "uf", "sindicato", "data_admissao",
                                  "data_inicio_cargo", "jornada_horas", "regime_jornada", "genero", "avaliacao_desempenho", "drift", "versao")}
     out["estabilidades"] = [s.get("tipo") for s in e.get("estabilidades") or []]
+    out["programas"] = [{"codigo": p.get("codigo"), "fim": p.get("fim")} for p in vigencia.active_programs(e)]
     out["alertas_conduta"] = bool((e.get("conduta") or {}).get("processo_disciplinar_aberto") or (e.get("conduta") or {}).get("medida_restritiva_compliance"))
     if conf is not None:
         out["conforme"] = conf["conforme"]
@@ -252,7 +258,7 @@ def employee_summary(e: dict, conf: dict | None = None) -> dict:
 
 
 async def compliance_ctx(employees: list[dict] | None = None) -> Ctx:
-    t = today()
+    t = await today()
     employees = employees if employees is not None else await store.list_employees()
     return Ctx(event={"data_efetiva": t, "dados": {}}, norma=await repo.norma(t), politica=await repo.politica(t), cargos=await repo.cargos(t),
                employees={e["id"]: e for e in employees})
@@ -293,7 +299,12 @@ async def get_employee(emp_id: str) -> dict:
     hierarquia = {"cadeia": [person_ref(m, ctx) for m in ctx.management_chain(emp)],
                   "subordinados": sorted((person_ref(r, ctx) for r in ctx.direct_reports(emp_id)), key=lambda r: (r["cargo"] or "", r["nome"] or "")),
                   "pares": len([p for p in ctx.direct_reports(emp.get("gestor_id")) if p["id"] != emp_id]) if emp.get("gestor_id") else 0}
-    return {"colaborador": emp, "cargo_contrato": {k: (ctx.cargo(emp.get("cargo")) or {}).get(k) for k in ("nome", "nivel", "segmento", "descricao")},
+    hoje = await today()
+    emitted = await store.r.hgetall(vigencia.EMITTED_KEY)
+    programas = [{**p, "dias_restantes": vigencia.remaining_days(p, hoje) if p.get("status") == "ATIVO" else None,
+                  "aviso_previsto": vigencia.warning_date(p)} for p in emp.get("programas") or []]
+    agenda = [{**i, "emitido": emitted.get(i["evento_id"])} for i in vigencia.agenda_for(emp)]
+    return {"colaborador": emp, "programas": programas, "agenda": agenda, "hoje": hoje, "cargo_contrato": {k: (ctx.cargo(emp.get("cargo")) or {}).get(k) for k in ("nome", "nivel", "segmento", "descricao")},
             "conformidade": conf, "estado_alvo": {k: v for k, v in tobe.items() if not k.startswith("_")}, "hierarquia": hierarquia,
             "casos": cases[:50], "log": await log.query(store, colaborador_id=emp_id, limit=200)}
 
@@ -325,7 +336,7 @@ async def generate_employees(body: dict = Body(default={}), x_persona: str = Hea
 
 
 async def _generate(size: int, seed: int, drift: float, *, replace: bool, actor: str) -> int:
-    t = today()
+    t = await today()
     if replace:
         await store.delete_all_employees()
         await store.r.delete(f"{P}:seq:employee")
@@ -436,7 +447,7 @@ async def invoke_operation(code: str, body: dict = Body(...), x_persona: str = H
     emp_id = body.get("colaborador_id")
     params = body.get("parametros") or {}
     simular = bool(body.get("simular", True))
-    t = today()
+    t = await today()
     ectx = shelf.ExecCtx(hoje=t, norma=((await repo.norma(t)) or {}).get("parametros") or {}, case_id="avulso")
     async with store.employee_lock(emp_id):
         emp = await store.get_employee(emp_id)
@@ -464,6 +475,55 @@ async def post_event(body: dict = Body(...)) -> dict:
     return case_summary(case)
 
 
+# ------------------------------------------------- clock and validity agenda
+@app.get("/api/clock")
+async def get_clock() -> dict:
+    return await clock.state(store)
+
+
+async def _clock_changed(state: dict, actor: str, mensagem: str) -> dict:
+    await log.write(store, log.RELOGIO, mensagem, ator=actor, dados=state)
+    emitted = await vigencia.tick(store, pipeline)
+    await store.publish({"tipo": "clock", "relogio": state})
+    return {**state, "emitidos": [case_summary(c) for c in emitted]}
+
+
+@app.post("/api/clock/advance")
+async def advance_clock(body: dict = Body(default={}), x_persona: str = Header("OPERADOR")) -> dict:
+    """Moves the simulated date forward and immediately emits the agenda events that became due."""
+    dias = int(body.get("dias", 1))
+    if dias <= 0:
+        raise HTTPException(400, "informe um número positivo de dias")
+    antes = await today()
+    state = await clock.advance(store, dias, f"persona:{x_persona}")
+    return await _clock_changed(state, f"persona:{x_persona}", f"Relógio simulado avançado {dias} dia(s): de {antes} para {state['hoje']}.")
+
+
+@app.put("/api/clock")
+async def set_clock(body: dict = Body(...), x_persona: str = Header("OPERADOR")) -> dict:
+    """Sets the simulated date; `data: null` returns to the real calendar."""
+    antes = await today()
+    try:
+        state = await clock.set_date(store, body.get("data"), f"persona:{x_persona}")
+    except ValueError as exc:
+        raise HTTPException(400, "data inválida; use AAAA-MM-DD") from exc
+    destino = state["hoje"] + ("" if state["simulado"] else " (calendário real)")
+    return await _clock_changed(state, f"persona:{x_persona}", f"Relógio simulado alterado de {antes} para {destino}.")
+
+
+@app.get("/api/vigencias")
+async def get_agenda() -> dict:
+    """Upcoming warning and expiry events of every active program."""
+    return await vigencia.agenda(store)
+
+
+@app.post("/api/vigencias/tick")
+async def run_agenda(x_persona: str = Header("OPERADOR")) -> dict:
+    """Emits the due agenda events now (the worker also does it periodically)."""
+    emitted = await vigencia.tick(store, pipeline, actor=f"persona:{x_persona}")
+    return {"emitidos": [case_summary(c) for c in emitted]}
+
+
 @app.get("/api/scenarios")
 async def list_scenarios() -> list[dict]:
     return [s.describe() for s in evgen.SCENARIOS]
@@ -483,6 +543,11 @@ async def apply_preparation(prep: dict, cenario: str) -> None:
 
 
 async def launch_built(built: dict, *, depuracao: bool, breakpoints: list[str], intervalo_ms: int = 0) -> list[dict]:
+    # a scenario that plays an agenda event (an expiry, for example) reserves its id
+    # before preparing the employee, so the agenda never emits the same event too
+    for ev in built["eventos"]:
+        for evt_id in (ev.get("metadados") or {}).get("reserva_agenda") or []:
+            await store.r.hset(vigencia.EMITTED_KEY, evt_id, f"cenario:{built['cenario']['id']}")
     await apply_preparation(built.get("preparacao") or {}, built["cenario"]["id"])
     cases = []
     for ev in built["eventos"]:
@@ -496,7 +561,7 @@ async def launch_built(built: dict, *, depuracao: bool, breakpoints: list[str], 
 async def generate_scenario(scenario_id: str, body: dict = Body(default={})) -> dict:
     if scenario_id not in evgen.SCENARIO_BY_ID:
         raise HTTPException(404, "cenário não existe")
-    t = today()
+    t = await today()
     built = evgen.build(scenario_id, await store.list_employees(), await repo.cargos(t), t, seed=body.get("semente"))
     if not built:
         raise HTTPException(409, "nenhum colaborador adequado para este cenário; gere um time maior")
@@ -509,7 +574,7 @@ async def generate_scenario(scenario_id: str, body: dict = Body(default={})) -> 
 @app.post("/api/scenarios/burst")
 async def burst(body: dict = Body(default={})) -> dict:
     n = min(int(body.get("quantidade", 20)), 2000)
-    t = today()
+    t = await today()
     items = evgen.random_burst(n, await store.list_employees(), await repo.cargos(t), t, seed=body.get("semente"), categorias=body.get("categorias"))
     intervalo = int(body.get("intervalo_ms", 0))
 
@@ -539,7 +604,7 @@ async def run_suite(body: dict = Body(default={})) -> dict:
 
 
 async def _suite(run_id: str, ids: list[str], seed: int, timeout_s: int) -> None:
-    t = today()
+    t = await today()
     gen = evgen.GenCtx(await store.list_employees(), await repo.cargos(t), t, random.Random(seed))
     results = []
     for sid in ids:
@@ -746,6 +811,7 @@ async def stats() -> dict:
         "aprovacoes_pendentes": await store.r.scard(f"{P}:approvals:pending"),
         "finalizados_ultimo_minuto": last_min,
         "controle": await store.control(),
+        "relogio": await clock.state(store),
     }
 
 

@@ -16,6 +16,7 @@ evento -> gatilho -> elegibilidade -> planejamento -> auditoria -> execução (s
   - **processo**: elegibilidade, orquestração e auditoria, avaliada antes de qualquer sistema ser alterado.
 - **Prateleira de serviços**: operações desacopladas e parametrizáveis que qualquer processo pode chamar, como adicionar benefício, alterar salário, incluir verba de bônus ou revogar acesso.
 - **Agente de conferência com IA**: Ollama local ou na rede por padrão, ou Anthropic Claude, OpenAI (e serviços compatíveis) ou Google Gemini na nuvem. Ele audita o plano antes da execução, confere a execução depois e sempre dá uma recomendação clara, APROVADO ou REPROVADO, com justificativa. Regras determinísticas decidem; o agente é a segunda linha de defesa.
+- **Eventos com vigência**: programas com prazo, como o de alto potencial (12 meses a partir da data oficial). A agenda emite o aviso antes do fim e o vencimento na data, os dois pela linha normal, que retira o que o programa concedia; renovação e encerramento antecipado reagendam ou cancelam. Um relógio simulado permite avançar o tempo para testar.
 - **Hierarquia**: cada colaborador tem gestor imediato; o organograma é navegável, as regras usam a hierarquia e as aprovações do gestor mostram o gestor real.
 - **Próximo passo** explícito em cada fase e em cada caso: o que acontece agora e quem precisa agir.
 - **Aprovações de exceção** por persona, com justificativa registrada.
@@ -80,9 +81,10 @@ Na tela Cenários, a aba "Rajada de eventos" dispara dezenas de eventos aleatór
 | Detalhe do caso | Evento, regras avaliadas, plano com operações escolhidas e descartadas, parecer do agente com prompt e resposta bruta, recibos da execução, compensações, auditoria, estado antes e depois e trilha completa. Permite avançar passo a passo, reprocessar a partir de um estágio, editar o evento e cancelar. |
 | Visão | Painel de visibilidade: KPIs, alertas, linha do tempo, funil, tempo por estágio, evento por situação, regras que mais barram, operações, aprovações, agente e índice. |
 | Perguntar | Perguntas em linguagem natural sobre todos os eventos, busca semântica e histórico. Cada resposta mostra a interpretação, os números exatos e as fontes. |
-| Cenários | 47 cenários reais, de exceção, de bloqueio, coletivos e de estresse, cada um com o resultado esperado. Também traz a suíte completa com comparação entre esperado e obtido, evento manual e rajada. |
+| Cenários | 54 cenários reais, de exceção, de bloqueio, coletivos e de estresse, cada um com o resultado esperado. Também traz a suíte completa com comparação entre esperado e obtido, evento manual e rajada. |
 | Aprovações | Exceções de elegibilidade e revisões humanas do plano e da auditoria. Troque a persona no topo para decidir como HRBP, Jurídico, Compliance, Comitê e outras. |
-| Colaboradores | Time artificial: edite cargo, datas, salário, conduta, estabilidades e dependentes; injete desvios; confira a conformidade; dispare eventos. |
+| Colaboradores | Time artificial: edite cargo, datas, salário, conduta, estabilidades e dependentes; veja os programas ativos e o tempo que falta; injete desvios; confira a conformidade; dispare eventos. |
+| Vigências | Relógio simulado (avançar dias ou ir para uma data) e agenda de avisos e vencimentos dos programas ativos, com o caso que cada evento abriu. |
 | Contratos | Editor estruturado e YAML para incluir ou remover regras e operações, mudar vigências e salvar como nova versão. |
 | Prateleira | Catálogo de operações, com execução avulsa ou simulada. |
 | Log | Todas as decisões e alterações, com filtro e exportação em JSONL. |

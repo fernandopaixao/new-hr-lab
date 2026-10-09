@@ -571,6 +571,10 @@ orquestracao:
         situacao: "=('GARDEN_LEAVE' if possui_clausula('GARDEN_LEAVE') and evento.dados.tipo != 'JUSTA_CAUSA' else 'DESLIGADO')"
         motivo: "=evento.dados.tipo"
       motivo: Executivos com cláusula de garden leave entram em garden leave; os demais são desligados.
+    - operacao: ENCERRAR_PROGRAMA
+      quando: "=len(programas_ativos) > 0"
+      parametros: {programa: "*", status: ENCERRADO, motivo: Desligamento}
+      motivo: Programas com vigência terminam com o vínculo; o vencimento agendado é cancelado.
     - operacao: INICIAR_GARDEN_LEAVE
       quando: "=possui_clausula('GARDEN_LEAVE') and evento.dados.tipo != 'JUSTA_CAUSA'"
       parametros: {dias: "=parametro_clausula('GARDEN_LEAVE', 'dias')"}
@@ -1028,3 +1032,305 @@ coletivo:
   selecao: "colaborador.situacao != 'DESLIGADO' and (vazio(evento.dados.cargo) or colaborador.cargo == evento.dados.cargo)"
   dados:
     motivo: "=evento.dados.motivo or 'Conferência coletiva'"
+---
+codigo: PROC_PROGRAMA_ALTO_POTENCIAL
+tipo: PROCESSO
+nome: Inclusão no programa de alto potencial
+evento: colaborador.programa_alto_potencial_iniciado
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+descricao: >
+  Inclui o colaborador no programa de alto potencial, que vale pelo período da
+  política (12 meses) a partir da data oficial. A inclusão agenda o aviso e o
+  vencimento; enquanto vigente, o programa concede bolsa, mentoria e acesso à
+  plataforma de liderança.
+evento_schema:
+  obrigatorios: [dados.data_oficial]
+  colaborador: DEVE_EXISTIR
+elegibilidade:
+  regras:
+    - id: APT-01
+      descricao: Colaborador ativo
+      expressao: "colaborador.situacao == 'ATIVO'"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Colaborador está {colaborador.situacao}."
+    - id: APT-02
+      descricao: Colaborador ainda não participa do programa
+      expressao: "not programa_ativo('ALTO_POTENCIAL')"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Já participa do programa até {programa('ALTO_POTENCIAL').fim}; use a renovação."
+    - id: APT-03
+      descricao: Data oficial já alcançada
+      expressao: "evento.dados.data_oficial <= hoje"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Data oficial {evento.dados.data_oficial} ainda não chegou (hoje é {hoje})."
+    - id: APT-04
+      descricao: Vigência ainda não encerrada
+      expressao: "somar_meses(evento.dados.data_oficial, politica.programas.ALTO_POTENCIAL.duracao_meses) > hoje"
+      tipo: BLOQUEANTE
+      explicacao_falha: "A vigência iniciada em {evento.dados.data_oficial} já terminou."
+    - id: APT-05
+      descricao: Avaliação de desempenho mínima do programa
+      expressao: "colaborador.avaliacao_desempenho >= politica.programas.ALTO_POTENCIAL.avaliacao_minima"
+      tipo: EXCECIONAVEL
+      aprovadores: [COMITE]
+      explicacao_falha: "Avaliação {colaborador.avaliacao_desempenho} abaixo de {politica.programas.ALTO_POTENCIAL.avaliacao_minima}."
+    - id: APT-06
+      descricao: Tempo mínimo de casa
+      expressao: "meses_de_casa >= politica.programas.ALTO_POTENCIAL.meses_minimos_de_casa"
+      tipo: EXCECIONAVEL
+      aprovadores: [HRBP]
+      explicacao_falha: "{meses_de_casa} meses de casa; mínimo de {politica.programas.ALTO_POTENCIAL.meses_minimos_de_casa}."
+    - id: APT-07
+      descricao: Sem processo disciplinar em aberto
+      expressao: "not colaborador.conduta.processo_disciplinar_aberto"
+      tipo: EXCECIONAVEL
+      aprovadores: [COMPLIANCE]
+      explicacao_falha: Há processo disciplinar em aberto.
+orquestracao:
+  derivar_estado_alvo: true
+  operacoes:
+    - operacao: INCLUIR_PROGRAMA
+      parametros:
+        programa: ALTO_POTENCIAL
+        nome: "=politica.programas.ALTO_POTENCIAL.nome"
+        inicio: "=evento.dados.data_oficial"
+        fim: "=somar_meses(evento.dados.data_oficial, politica.programas.ALTO_POTENCIAL.duracao_meses)"
+        aviso_dias: "=politica.programas.ALTO_POTENCIAL.aviso_dias"
+        concessoes: "=politica.programas.ALTO_POTENCIAL.concessoes"
+        evento_aviso: "=politica.programas.ALTO_POTENCIAL.evento_aviso"
+        evento_vencimento: "=politica.programas.ALTO_POTENCIAL.evento_vencimento"
+      motivo: Registra o programa com a vigência da política e agenda o aviso e o vencimento.
+    - operacao: REGISTRAR_TREINAMENTO
+      parametros: {curso: "=politica.programas.ALTO_POTENCIAL.trilha"}
+      motivo: Participantes do programa entram na trilha de desenvolvimento.
+    - operacao: NOTIFICAR
+      parametros: {destinatarios: [COLABORADOR, GESTOR, HRBP], assunto: Inclusão no programa de alto potencial}
+      motivo: Comunicação da inclusão e da data de término.
+conferencia_plano:
+  regras:
+    - id: CPL-APT-01
+      descricao: Vigência projetada igual à da política
+      expressao: "programa('ALTO_POTENCIAL').fim == somar_meses(evento.dados.data_oficial, politica.programas.ALTO_POTENCIAL.duracao_meses)"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Fim projetado {programa('ALTO_POTENCIAL').fim} difere da duração da política."
+auditoria:
+  sla_horas: 72
+  incluir_compliance: true
+  verificacoes:
+    - id: AUD-APT-01
+      descricao: Programa ativo com aviso e vencimento agendados
+      expressao: "programa_ativo('ALTO_POTENCIAL') and programa('ALTO_POTENCIAL').evento_vencimento"
+      tipo: BLOQUEANTE
+      explicacao_falha: Programa não ficou ativo ou não tem vencimento agendado.
+    - id: AUD-APT-02
+      descricao: Concessões do programa aplicadas
+      expressao: "all(possui_verba(v.codigo) for v in programa('ALTO_POTENCIAL').concessoes.verbas or []) and all(possui_beneficio(b.codigo) for b in programa('ALTO_POTENCIAL').concessoes.beneficios or [])"
+      tipo: BLOQUEANTE
+      explicacao_falha: Verba ou benefício do programa não foi concedido.
+---
+codigo: PROC_AVISO_VENCIMENTO_PROGRAMA
+tipo: PROCESSO
+nome: Aviso de vencimento de programa
+evento: colaborador.programa_a_vencer
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+descricao: >
+  Emitido pela agenda de vigências alguns dias antes do fim de um programa
+  (prazo definido na política). Avisa colaborador, gestor e HRBP para que
+  decidam pela renovação ou deixem o programa vencer.
+evento_schema:
+  obrigatorios: [dados.programa]
+  colaborador: DEVE_EXISTIR
+elegibilidade:
+  regras:
+    - id: AVP-01
+      descricao: Programa ainda ativo
+      expressao: "programa_ativo(evento.dados.programa)"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Programa {evento.dados.programa} não está ativo; não há o que avisar."
+    - id: AVP-02
+      descricao: Aviso referente à vigência atual
+      expressao: "vazio(evento.dados.fim) or evento.dados.fim == programa(evento.dados.programa).fim"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Aviso para o fim {evento.dados.fim}, mas o programa foi renovado até {programa(evento.dados.programa).fim}."
+orquestracao:
+  derivar_estado_alvo: false
+  operacoes:
+    - operacao: REGISTRAR_AVISO_PROGRAMA
+      parametros: {programa: "=evento.dados.programa"}
+      motivo: Marca o aviso no programa para que não seja repetido.
+    - operacao: NOTIFICAR
+      parametros:
+        destinatarios: [COLABORADOR, GESTOR, HRBP]
+        assunto: "='Programa ' + evento.dados.programa + ' vence em ' + programa(evento.dados.programa).fim"
+      motivo: Dá tempo para decidir pela renovação antes do vencimento.
+conferencia_plano:
+  regras: []
+auditoria:
+  sla_horas: 24
+  incluir_compliance: false
+  verificacoes:
+    - id: AUD-AVP-01
+      descricao: Aviso registrado no programa
+      expressao: "programa(evento.dados.programa).aviso_em"
+      tipo: BLOQUEANTE
+      explicacao_falha: Aviso não registrado.
+---
+codigo: PROC_VENCIMENTO_PROGRAMA
+tipo: PROCESSO
+nome: Vencimento de programa
+evento: colaborador.programa_expirado
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+descricao: >
+  Emitido pela agenda de vigências na data de fim do programa. Encerra o
+  programa e desfaz o que ele concedia: as concessões saem do estado alvo e o
+  plano retira verba, benefício e acesso.
+evento_schema:
+  obrigatorios: [dados.programa]
+  colaborador: DEVE_EXISTIR
+elegibilidade:
+  regras:
+    - id: VEN-01
+      descricao: Programa ativo
+      expressao: "programa_ativo(evento.dados.programa)"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Programa {evento.dados.programa} não está ativo ({programa(evento.dados.programa).status or 'sem registro'})."
+    - id: VEN-02
+      descricao: Fim da vigência alcançado
+      expressao: "hoje >= programa(evento.dados.programa).fim"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Vigência vai até {programa(evento.dados.programa).fim}; vencimento em {hoje} seria antecipado (use o encerramento)."
+orquestracao:
+  derivar_estado_alvo: true
+  operacoes:
+    - operacao: ENCERRAR_PROGRAMA
+      parametros: {programa: "=evento.dados.programa", status: EXPIRADO, motivo: Fim da vigência}
+      motivo: A vigência terminou; o programa deixa de conceder benefícios.
+    - operacao: NOTIFICAR
+      parametros:
+        destinatarios: [COLABORADOR, GESTOR, HRBP]
+        assunto: "='Encerramento do programa ' + evento.dados.programa + ' por fim da vigência'"
+      motivo: Comunicação do fim do programa.
+conferencia_plano:
+  regras: []
+auditoria:
+  sla_horas: 24
+  incluir_compliance: true
+  verificacoes:
+    - id: AUD-VEN-01
+      descricao: Programa encerrado por vencimento
+      expressao: "not programa_ativo(evento.dados.programa) and programa(evento.dados.programa).status == 'EXPIRADO'"
+      tipo: BLOQUEANTE
+      explicacao_falha: Programa continua ativo.
+    - id: AUD-VEN-02
+      descricao: Concessões do programa retiradas
+      expressao: "not any(possui_verba(v.codigo) for v in programa(evento.dados.programa).concessoes.verbas or []) and not any(possui_beneficio(b.codigo) for b in programa(evento.dados.programa).concessoes.beneficios or []) and not any(possui_acesso(a) for a in programa(evento.dados.programa).concessoes.acessos or [])"
+      tipo: BLOQUEANTE
+      explicacao_falha: O colaborador mantém verba, benefício ou acesso concedido pelo programa.
+---
+codigo: PROC_RENOVACAO_PROGRAMA
+tipo: PROCESSO
+nome: Renovação de programa
+evento: colaborador.programa_renovado
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+descricao: >
+  Estende a vigência de um programa ativo pelo período da política (ou pelos
+  meses informados). Aviso e vencimento passam a valer para o novo fim.
+evento_schema:
+  obrigatorios: [dados.programa]
+  colaborador: DEVE_EXISTIR
+elegibilidade:
+  regras:
+    - id: REN-01
+      descricao: Programa ativo
+      expressao: "programa_ativo(evento.dados.programa)"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Programa {evento.dados.programa} não está ativo; uma nova participação exige nova inclusão."
+    - id: REN-02
+      descricao: Colaborador ativo
+      expressao: "colaborador.situacao == 'ATIVO'"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Colaborador está {colaborador.situacao}."
+    - id: REN-03
+      descricao: Limite de renovações da política
+      expressao: "len(programa(evento.dados.programa).renovacoes) < politica.programas[evento.dados.programa].renovacoes_max"
+      tipo: EXCECIONAVEL
+      aprovadores: [COMITE]
+      explicacao_falha: "Programa já renovado {len(programa(evento.dados.programa).renovacoes)} vez(es); limite de {politica.programas[evento.dados.programa].renovacoes_max}."
+    - id: REN-04
+      descricao: Avaliação de desempenho mínima mantida
+      expressao: "colaborador.avaliacao_desempenho >= politica.programas[evento.dados.programa].avaliacao_minima"
+      tipo: EXCECIONAVEL
+      aprovadores: [COMITE]
+      explicacao_falha: "Avaliação {colaborador.avaliacao_desempenho} abaixo de {politica.programas[evento.dados.programa].avaliacao_minima}."
+orquestracao:
+  derivar_estado_alvo: false
+  operacoes:
+    - operacao: RENOVAR_PROGRAMA
+      parametros:
+        programa: "=evento.dados.programa"
+        novo_fim: "=somar_meses(programa(evento.dados.programa).fim, evento.dados.meses or politica.programas[evento.dados.programa].duracao_meses)"
+        motivo: "=evento.dados.justificativa"
+      motivo: Estende a vigência a partir do fim atual; aviso e vencimento são reagendados.
+    - operacao: NOTIFICAR
+      parametros:
+        destinatarios: [COLABORADOR, GESTOR, HRBP]
+        assunto: "='Renovação do programa ' + evento.dados.programa"
+      motivo: Comunicação do novo prazo.
+conferencia_plano:
+  regras: []
+auditoria:
+  sla_horas: 48
+  incluir_compliance: false
+  verificacoes:
+    - id: AUD-REN-01
+      descricao: Novo fim posterior ao anterior
+      expressao: "len(programa(evento.dados.programa).renovacoes) > 0 and programa(evento.dados.programa).fim > programa(evento.dados.programa).renovacoes[-1].de"
+      tipo: BLOQUEANTE
+      explicacao_falha: Vigência não foi estendida.
+---
+codigo: PROC_ENCERRAMENTO_PROGRAMA
+tipo: PROCESSO
+nome: Encerramento antecipado de programa
+evento: colaborador.programa_encerrado
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+descricao: >
+  Encerra um programa antes do fim da vigência (desistência, desempenho,
+  mudança de carreira). As concessões são retiradas e o vencimento agendado é
+  cancelado, porque o programa deixa de estar ativo.
+evento_schema:
+  obrigatorios: [dados.programa, dados.motivo]
+  colaborador: DEVE_EXISTIR
+elegibilidade:
+  regras:
+    - id: ENC-01
+      descricao: Programa ativo
+      expressao: "programa_ativo(evento.dados.programa)"
+      tipo: BLOQUEANTE
+      explicacao_falha: "Programa {evento.dados.programa} não está ativo."
+orquestracao:
+  derivar_estado_alvo: true
+  operacoes:
+    - operacao: ENCERRAR_PROGRAMA
+      parametros: {programa: "=evento.dados.programa", status: ENCERRADO, motivo: "=evento.dados.motivo"}
+      motivo: Encerramento antes do fim da vigência, pelo motivo informado.
+    - operacao: NOTIFICAR
+      parametros:
+        destinatarios: [COLABORADOR, GESTOR, HRBP]
+        assunto: "='Encerramento antecipado do programa ' + evento.dados.programa"
+      motivo: Comunicação do encerramento.
+conferencia_plano:
+  regras: []
+auditoria:
+  sla_horas: 48
+  incluir_compliance: true
+  verificacoes:
+    - id: AUD-ENC-01
+      descricao: Programa encerrado e concessões retiradas
+      expressao: "programa(evento.dados.programa).status == 'ENCERRADO' and not any(possui_verba(v.codigo) for v in programa(evento.dados.programa).concessoes.verbas or [])"
+      tipo: BLOQUEANTE
+      explicacao_falha: Programa continua ativo ou a verba do programa continua na folha.

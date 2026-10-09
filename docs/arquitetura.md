@@ -51,8 +51,10 @@
 | `llm.py` | Provedores de IA (Ollama, Claude, OpenAI e compatíveis, Gemini): chamada estruturada, lista de modelos, embeddings, saúde e teste de conexão. | `apikeys` |
 | `apikeys.py` | Chaves de API: ambiente primeiro, depois `secrets.json` no volume de dados. Nunca no Redis. | `config` |
 | `agent.py` | Agente de conferência sobre `llm.py`. | `store`, `llm` |
+| `clock.py` | Relógio simulado: data de negócio compartilhada pela API e pelos workers. | `store` |
+| `vigencia.py` | Agenda de vigências derivada dos programas ativos; emite aviso e vencimento pela linha, uma vez cada. | `clock`, `store` |
 | `pipeline.py` | Handlers dos estágios, aprovações, depuração, saga, concorrência e eventos coletivos. | todos acima |
-| `worker.py` | Loops de consumo das filas e monitor de saúde do agente. | `pipeline` |
+| `worker.py` | Loops de consumo das filas, monitor de saúde do agente e conferência periódica da agenda de vigências. | `pipeline`, `vigencia` |
 | `logbook.py` | Log append-only (stream, trilhas por caso e por colaborador, arquivo JSONL). | `store` |
 | `facts.py` | Modelo de leitura: fatos por caso, documentos narrativos e painel de visibilidade. | `domain` |
 | `embeddings.py` | Embeddings pelo provedor escolhido, modo simulado, armazenamento e busca vetorial. | `store`, `llm` |
@@ -90,6 +92,8 @@ A regra de dependência é simples: `engine.py`, `facts.py`, `shelf.py` e `expr.
 | `hr:approval:{id}`, `hr:approvals`, `hr:approvals:pending` | JSON, sorted set, set | Aprovações e pendências. |
 | `hr:settings`, `hr:control`, `hr:setup` | JSON | Configurações, controle da linha (pausas, breakpoints) e estado do assistente de configuração. As chaves de API não ficam no Redis. |
 | `hr:agent:health`, `hr:agent:cache:*`, `hr:waiting_agent` | JSON, strings com TTL, hash | Saúde do provedor de IA, cache de respostas, casos aguardando o agente. |
+| `hr:clock` | JSON | Data do relógio simulado; vazio, vale o calendário real. |
+| `hr:vigencia:emitidos` | hash | Itens da agenda já emitidos (id fixo do evento para o caso que o recebeu). Garante uma emissão por item. |
 | `hr:scenario_run:{id}`, `hr:scenario_runs` | JSON, lista | Execuções da suíte de cenários. |
 | `hr:vec:doc:{id}`, `hr:vec:ids`, `hr:vec:version` | hash, set, contador | Índice vetorial: texto, metadados, vetor, modelo. |
 | `hr:vec:dirty`, `hr:vec:simulated`, `hr:vec:status` | sorted set, set, JSON | Fila de reindexação, documentos com embedding simulado, estado do indexador. |

@@ -410,6 +410,78 @@ def _registrar_treinamento(emp: dict, p: dict, ctx: ExecCtx) -> str:
     return f"Matrícula na trilha {p['curso']} realizada."
 
 
+# ------------------------------------------------------------------ programas
+def _active_program(emp: dict, codigo: str) -> dict | None:
+    return next((p for p in emp.get("programas") or [] if p.get("codigo") == codigo and p.get("status") == "ATIVO"), None)
+
+
+@op("INCLUIR_PROGRAMA", "Incluir em programa com vigência", "DESENVOLVIMENTO",
+    "Registra o colaborador em um programa com início oficial, fim e eventos de aviso e vencimento agendados.",
+    [Param("programa"), Param("nome", obrigatorio=False), Param("inicio", "data", descricao="Data oficial de início"),
+     Param("fim", "data", descricao="Fim da vigência; o vencimento é emitido nesta data"),
+     Param("aviso_dias", "numero", False, "Dias antes do fim para o aviso de vencimento"),
+     Param("concessoes", "objeto", False, "O que o programa concede enquanto vigente: verbas, benefícios e acessos"),
+     Param("evento_aviso", obrigatorio=False), Param("evento_vencimento", obrigatorio=False)],
+    ["programas", "historico"], 25)
+def _incluir_programa(emp: dict, p: dict, ctx: ExecCtx) -> str:
+    if _active_program(emp, p["programa"]):
+        raise OperationError(f"programa {p['programa']} já está ativo")
+    if str(p["fim"])[:10] <= str(p["inicio"])[:10]:
+        raise OperationError("fim da vigência deve ser posterior ao início")
+    emp.setdefault("programas", []).append({
+        "codigo": p["programa"], "nome": p.get("nome") or p["programa"], "inicio": str(p["inicio"])[:10], "fim": str(p["fim"])[:10],
+        "status": "ATIVO", "aviso_dias": int(p.get("aviso_dias") or 0), "aviso_em": None, "concessoes": p.get("concessoes") or {},
+        "evento_aviso": p.get("evento_aviso"), "evento_vencimento": p.get("evento_vencimento"), "caso_origem": ctx.case_id,
+        "renovacoes": [], "encerrado_em": None, "motivo_encerramento": None,
+    })
+    _hist(emp, ctx, "PROGRAMA", f"Inclusão no programa {p['programa']} de {p['inicio']} a {p['fim']}")
+    return f"Programa {p.get('nome') or p['programa']} registrado com vigência de {str(p['inicio'])[:10]} a {str(p['fim'])[:10]}."
+
+
+@op("RENOVAR_PROGRAMA", "Renovar programa", "DESENVOLVIMENTO",
+    "Estende a vigência de um programa ativo; aviso e vencimento são reagendados para o novo fim.",
+    [Param("programa"), Param("novo_fim", "data"), Param("motivo", obrigatorio=False)], ["programas", "historico"], 26)
+def _renovar_programa(emp: dict, p: dict, ctx: ExecCtx) -> str:
+    prog = _active_program(emp, p["programa"])
+    if not prog:
+        raise OperationError(f"programa {p['programa']} não está ativo")
+    novo = str(p["novo_fim"])[:10]
+    if novo <= prog["fim"]:
+        raise OperationError(f"novo fim {novo} deve ser posterior ao fim atual {prog['fim']}")
+    prog.setdefault("renovacoes", []).append({"data": ctx.hoje, "de": prog["fim"], "para": novo, "motivo": p.get("motivo"), "caso": ctx.case_id})
+    prog["fim"] = novo
+    prog["aviso_em"] = None
+    _hist(emp, ctx, "PROGRAMA", f"Renovação do programa {p['programa']} até {novo}")
+    return f"Programa {p['programa']} renovado até {novo}; aviso e vencimento reagendados."
+
+
+@op("REGISTRAR_AVISO_PROGRAMA", "Registrar aviso de vencimento", "DESENVOLVIMENTO",
+    "Marca que o aviso de vencimento do programa foi enviado.", [Param("programa")], ["programas"], 27)
+def _registrar_aviso_programa(emp: dict, p: dict, ctx: ExecCtx) -> str:
+    prog = _active_program(emp, p["programa"])
+    if not prog:
+        raise OperationError(f"programa {p['programa']} não está ativo")
+    prog["aviso_em"] = ctx.hoje
+    return f"Aviso de vencimento do programa {p['programa']} registrado; vigência termina em {prog['fim']}."
+
+
+@op("ENCERRAR_PROGRAMA", "Encerrar programa", "DESENVOLVIMENTO",
+    "Encerra um programa ativo por vencimento (EXPIRADO) ou antecipadamente (ENCERRADO). Com programa '*', encerra todos.",
+    [Param("programa"), Param("status", descricao="EXPIRADO ou ENCERRADO"), Param("motivo", obrigatorio=False)],
+    ["programas", "historico"], 28)
+def _encerrar_programa(emp: dict, p: dict, ctx: ExecCtx) -> str:
+    if p["status"] not in ("EXPIRADO", "ENCERRADO"):
+        raise OperationError(f"status de encerramento inválido: {p['status']}")
+    alvo = [x for x in emp.get("programas") or [] if x.get("status") == "ATIVO" and p["programa"] in ("*", x.get("codigo"))]
+    if not alvo:
+        raise OperationError(f"programa {p['programa']} não está ativo")
+    for prog in alvo:
+        prog.update({"status": p["status"], "encerrado_em": ctx.hoje, "motivo_encerramento": p.get("motivo")})
+        _hist(emp, ctx, "PROGRAMA", f"Programa {prog['codigo']} {'vencido' if p['status'] == 'EXPIRADO' else 'encerrado'} em {ctx.hoje}")
+    nomes = ", ".join(x["codigo"] for x in alvo)
+    return f"Programa {nomes} {'encerrado por vencimento' if p['status'] == 'EXPIRADO' else 'encerrado antecipadamente'} em {ctx.hoje}."
+
+
 # ------------------------------------------------------- eSocial e comunicação
 @op("ENVIAR_ESOCIAL", "Enviar evento eSocial", "ESOCIAL", "Transmite evento ao eSocial (simulado).",
     [Param("evento"), Param("descricao", obrigatorio=False)], ["esocial"], 95)
@@ -499,6 +571,7 @@ def new_employee_from_admission(d: dict, hoje: str) -> dict:
         "acessos": [],
         "equipamentos": [],
         "clausulas": [],
+        "programas": [],
         "historico_cargos": [],
         "historico_salarial": [{"data": data_inicio, "de": 0, "para": round(float(d.get("salario") or 0), 2), "motivo": "admissão"}],
         "historico": [{"data": hoje, "tipo": "ADMISSAO", "descricao": "Admissão"}],

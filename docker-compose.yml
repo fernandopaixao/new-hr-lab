@@ -1,0 +1,96 @@
+# Laboratorio Novo RH: arquitetura orientada a eventos para operacoes de RH.
+#
+# Uso basico (Ollama ja rodando na maquina ou na rede):
+#   docker compose up -d --build
+#   abra http://localhost:8080
+#
+# Ollama em container (CPU), com download automatico do modelo:
+#   docker compose --profile ollama up -d --build
+#   e defina OLLAMA_BASE_URL=http://ollama:11434 no .env
+#
+# Mais workers para testes de estresse:
+#   docker compose up -d --scale worker=3
+
+x-backend: &backend
+  build: ./backend
+  restart: unless-stopped
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    REDIS_URL: redis://redis:6379/0
+    DATA_DIR: /data
+    OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
+    EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  volumes:
+    - hrdata:/data
+  depends_on:
+    redis:
+      condition: service_healthy
+
+services:
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    <<: *backend
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  worker:
+    <<: *backend
+    command: ["python", "-m", "hrlab.worker"]
+
+  # Embeds every event (case narratives and decisions) for semantic search
+  # and for the natural language agent. Keep a single instance.
+  indexer:
+    <<: *backend
+    command: ["python", "-m", "hrlab.indexer"]
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "${UI_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    restart: unless-stopped
+    volumes:
+      - ollama:/root/.ollama
+    ports:
+      - "11434:11434"
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c", "sleep 5 && ollama pull ${OLLAMA_MODEL:-qwen2.5:7b} && ollama pull ${EMBEDDING_MODEL:-nomic-embed-text}"]
+    restart: "no"
+
+volumes:
+  redisdata:
+  hrdata:
+  ollama:

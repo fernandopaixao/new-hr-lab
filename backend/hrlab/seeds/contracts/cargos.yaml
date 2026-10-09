@@ -1,0 +1,393 @@
+# Contratos de cargo: descrevem o estado alvo (to-be) e o estado de compliance de
+# cada posição. Valores fictícios para o laboratório.
+codigo: CARGO_ESCRITURARIO
+tipo: CARGO
+cargo: ESCRITURARIO
+nome: Escriturário
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+familia: OPERACOES
+segmento: OPERACIONAL
+nivel: 1
+cargo_confianca: false
+estado_alvo:
+  regime_jornada: NORMAL_224
+  jornada_horas: 6
+  faixa_salarial: {min: 3600, max: 4800}
+  verbas: []
+  beneficios:
+    - {codigo: SAUDE, nome: Plano de saúde, plano: BASICO}
+    - {codigo: ODONTO, nome: Plano odontológico, plano: BASICO}
+    - {codigo: SEGURO_VIDA, nome: Seguro de vida, plano: PADRAO}
+  acessos: [EMAIL, CORE_BANCARIO_CONSULTA]
+  equipamentos: [DESKTOP]
+  clausulas: []
+  certificacoes_exigidas: []
+elegibilidade_entrada: []
+compliance: []
+---
+codigo: CARGO_CAIXA
+tipo: CARGO
+cargo: CAIXA
+nome: Caixa
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+familia: OPERACOES
+segmento: OPERACIONAL
+nivel: 2
+cargo_confianca: false
+estado_alvo:
+  regime_jornada: NORMAL_224
+  jornada_horas: 6
+  faixa_salarial: {min: 4400, max: 5600}
+  verbas:
+    - {codigo: GRAT_CAIXA, nome: Gratificação de caixa, valor: "=norma.gratificacao_caixa_valor", base_legal: CCT cláusula de gratificação de caixa (ilustrativa)}
+  beneficios:
+    - {codigo: SAUDE, nome: Plano de saúde, plano: BASICO}
+    - {codigo: ODONTO, nome: Plano odontológico, plano: BASICO}
+    - {codigo: SEGURO_VIDA, nome: Seguro de vida, plano: PADRAO}
+  acessos: [EMAIL, CORE_BANCARIO_CAIXA, TESOURARIA_AGENCIA]
+  equipamentos: [DESKTOP]
+  clausulas: []
+  certificacoes_exigidas: []
+elegibilidade_entrada:
+  - id: CXA-ENT-01
+    descricao: Caixa precisa de ao menos 6 meses de casa
+    expressao: "meses_de_casa >= 6"
+    tipo: EXCECIONAVEL
+    aprovadores: [GESTOR]
+    explicacao_falha: "Colaborador tem {meses_de_casa} meses de casa; a função de caixa pede 6."
+compliance:
+  - id: CXA-CMP-01
+    descricao: Caixa recebe gratificação de caixa
+    expressao: "possui_verba('GRAT_CAIXA')"
+    tipo: BLOQUEANTE
+    base_legal: CCT cláusula de gratificação de caixa (ilustrativa)
+    explicacao_falha: Caixa sem gratificação de caixa.
+---
+codigo: CARGO_ANALISTA_JR
+tipo: CARGO
+cargo: ANALISTA_JR
+nome: Analista Júnior
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+familia: TECNICO
+segmento: TECNICO
+nivel: 2
+cargo_confianca: false
+estado_alvo:
+  regime_jornada: NORMAL_224
+  jornada_horas: 6
+  faixa_salarial: {min: 4800, max: 6800}
+  verbas: []
+  beneficios:
+    - {codigo: SAUDE, nome: Plano de saúde, plano: BASICO}
+    - {codigo: ODONTO, nome: Plano odontológico, plano: BASICO}
+    - {codigo: SEGURO_VIDA, nome: Seguro de vida, plano: PADRAO}
+  acessos: [EMAIL, BI_CORPORATIVO]
+  equipamentos: [NOTEBOOK]
+  clausulas: []
+  certificacoes_exigidas: []
+elegibilidade_entrada:
+  - id: AJR-ENT-01
+    descricao: Analista exige ao menos superior incompleto
+    expressao: "escolaridade_ao_menos('SUPERIOR_INCOMPLETO')"
+    tipo: EXCECIONAVEL
+    aprovadores: [HRBP]
+    explicacao_falha: "Escolaridade {colaborador.escolaridade} abaixo do mínimo (superior incompleto)."
+compliance: []
+---
+codigo: CARGO_ANALISTA_PL
+tipo: CARGO
+cargo: ANALISTA_PL
+nome: Analista Pleno
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+familia: TECNICO
+segmento: TECNICO
+nivel: 3
+cargo_confianca: false
+estado_alvo:
+  regime_jornada: NORMAL_224
+  jornada_horas: 6
+  faixa_salarial: {min: 6800, max: 9500}
+  verbas: []
+  beneficios:
+    - {codigo: SAUDE, nome: Plano de saúde, plano: PRATA}
+    - {codigo: ODONTO, nome: Plano odontológico, plano: BASICO}
+    - {codigo: SEGURO_VIDA, nome: Seguro de vida, plano: PADRAO}
+  acessos: [EMAIL, BI_CORPORATIVO, DATALAKE_LEITURA]
+  equipamentos: [NOTEBOOK]
+  clausulas: []
+  certificacoes_exigidas: []
+elegibilidade_entrada:
+  - id: APL-ENT-01
+    descricao: Analista pleno exige superior completo
+    expressao: "escolaridade_ao_menos('SUPERIOR')"
+    tipo: EXCECIONAVEL
+    aprovadores: [HRBP]
+    explicacao_falha: "Escolaridade {colaborador.escolaridade} abaixo do mínimo (superior completo)."
+compliance: []
+---
+codigo: CARGO_ANALISTA_SR
+tipo: CARGO
+cargo: ANALISTA_SR
+nome: Analista Sênior
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+familia: TECNICO
+segmento: TECNICO
+nivel: 4
+cargo_confianca: false
+estado_alvo:
+  regime_jornada: NORMAL_224
+  jornada_horas: 6
+  faixa_salarial: {min: 9500, max: 13000}
+  verbas: []
+  beneficios:
+    - {codigo: SAUDE, nome: Plano de saúde, plano: OURO}
+    - {codigo: ODONTO, nome: Plano odontológico, plano: PLUS}
+    - {codigo: SEGURO_VIDA, nome: Seguro de vida, plano: PADRAO}
+  acessos: [EMAIL, BI_CORPORATIVO, DATALAKE_LEITURA, DATALAKE_ESCRITA]
+  equipamentos: [NOTEBOOK]
+  clausulas: []
+  certificacoes_exigidas: []
+elegibilidade_entrada:
+  - id: ASR-ENT-01
+    descricao: Analista sênior exige superior completo
+    expressao: "escolaridade_ao_menos('SUPERIOR')"
+    tipo: BLOQUEANTE
+    explicacao_falha: "Escolaridade {colaborador.escolaridade} abaixo do mínimo (superior completo)."
+compliance: []
+---
+codigo: CARGO_GERENTE_RELACIONAMENTO
+tipo: CARGO
+cargo: GERENTE_RELACIONAMENTO
+nome: Gerente de Relacionamento
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+familia: NEGOCIOS
+segmento: NEGOCIOS
+nivel: 4
+cargo_confianca: true
+estado_alvo:
+  regime_jornada: CONFIANCA_224_2
+  jornada_horas: 8
+  faixa_salarial: {min: 7500, max: 12500}
+  verbas:
+    - {codigo: GRAT_FUNCAO, nome: Gratificação de função, valor: "=round(colaborador.salario_base * norma.gratificacao_funcao_min_percentual / 100, 2)", base_legal: CLT art. 224 par. 2}
+  beneficios:
+    - {codigo: SAUDE, nome: Plano de saúde, plano: OURO}
+    - {codigo: ODONTO, nome: Plano odontológico, plano: PLUS}
+    - {codigo: SEGURO_VIDA, nome: Seguro de vida, plano: PADRAO}
+    - {codigo: PREVIDENCIA, nome: Previdência privada, plano: CONTRIBUICAO_4}
+  acessos: [EMAIL, CRM_VAREJO, CREDITO_ALCADA_1, PLATAFORMA_INVESTIMENTOS]
+  equipamentos: [NOTEBOOK]
+  clausulas: []
+  certificacoes_exigidas: [CPA-20]
+elegibilidade_entrada:
+  - id: GRL-ENT-01
+    descricao: Certificação CPA-20 para distribuir produtos de investimento
+    expressao: "possui_certificacao('CPA-20')"
+    tipo: BLOQUEANTE
+    base_legal: Autorregulação ANBIMA de distribuição (ilustrativa)
+    explicacao_falha: O cargo distribui investimentos e o colaborador não possui CPA-20 válida.
+  - id: GRL-ENT-02
+    descricao: Gerente de relacionamento exige superior completo
+    expressao: "escolaridade_ao_menos('SUPERIOR')"
+    tipo: EXCECIONAVEL
+    aprovadores: [HRBP]
+    explicacao_falha: "Escolaridade {colaborador.escolaridade} abaixo do mínimo (superior completo)."
+compliance:
+  - id: GRL-CMP-01
+    descricao: Gerente de relacionamento mantém CPA-20
+    expressao: "possui_certificacao('CPA-20')"
+    tipo: BLOQUEANTE
+    base_legal: Autorregulação ANBIMA (ilustrativa)
+    explicacao_falha: Gerente sem CPA-20 não pode manter acesso à plataforma de investimentos.
+---
+codigo: CARGO_COORDENADOR
+tipo: CARGO
+cargo: COORDENADOR
+nome: Coordenador
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+familia: GESTAO
+segmento: MEDIA_GESTAO
+nivel: 5
+cargo_confianca: true
+estado_alvo:
+  regime_jornada: CONFIANCA_224_2
+  jornada_horas: 8
+  faixa_salarial: {min: 11000, max: 16000}
+  verbas:
+    - {codigo: GRAT_FUNCAO, nome: Gratificação de função, valor: "=round(colaborador.salario_base * norma.gratificacao_funcao_min_percentual / 100, 2)", base_legal: CLT art. 224 par. 2}
+  beneficios:
+    - {codigo: SAUDE, nome: Plano de saúde, plano: OURO}
+    - {codigo: ODONTO, nome: Plano odontológico, plano: PLUS}
+    - {codigo: SEGURO_VIDA, nome: Seguro de vida, plano: GESTAO}
+    - {codigo: PREVIDENCIA, nome: Previdência privada, plano: CONTRIBUICAO_5}
+  acessos: [EMAIL, BI_CORPORATIVO, APROVACAO_PONTO_EQUIPE, PORTAL_GESTOR]
+  equipamentos: [NOTEBOOK, CELULAR_CORPORATIVO]
+  clausulas: []
+  certificacoes_exigidas: []
+elegibilidade_entrada:
+  - id: CRD-ENT-01
+    descricao: Coordenação exige superior completo
+    expressao: "escolaridade_ao_menos('SUPERIOR')"
+    tipo: EXCECIONAVEL
+    aprovadores: [HRBP]
+    explicacao_falha: "Escolaridade {colaborador.escolaridade} abaixo do mínimo (superior completo)."
+  - id: CRD-ENT-02
+    descricao: Primeira posição de gestão exige avaliação de desempenho 4 ou superior
+    expressao: "colaborador.avaliacao_desempenho >= 4"
+    tipo: EXCECIONAVEL
+    aprovadores: [HRBP, GESTOR]
+    explicacao_falha: "Avaliação {colaborador.avaliacao_desempenho} abaixo de 4 para assumir gestão."
+compliance:
+  - id: CRD-CMP-01
+    descricao: Média gerência possui celular corporativo
+    expressao: "colaborador.situacao != 'ATIVO' or possui_equipamento('CELULAR_CORPORATIVO')"
+    tipo: BLOQUEANTE
+    base_legal: Política de mobilidade corporativa
+    explicacao_falha: Coordenador ativo sem celular corporativo.
+---
+codigo: CARGO_GERENTE_AGENCIA
+tipo: CARGO
+cargo: GERENTE_AGENCIA
+nome: Gerente Geral de Agência
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+familia: GESTAO
+segmento: MEDIA_GESTAO
+nivel: 6
+cargo_confianca: true
+estado_alvo:
+  regime_jornada: GESTAO_62_II
+  jornada_horas: 8
+  faixa_salarial: {min: 15000, max: 24000}
+  verbas:
+    - {codigo: GRAT_GESTAO, nome: Gratificação de gestão, valor: "=round(colaborador.salario_base * norma.gratificacao_gestao_min_percentual / 100, 2)", base_legal: CLT art. 62 II par. único}
+  beneficios:
+    - {codigo: SAUDE, nome: Plano de saúde, plano: PLATINA}
+    - {codigo: ODONTO, nome: Plano odontológico, plano: PLUS}
+    - {codigo: SEGURO_VIDA, nome: Seguro de vida, plano: GESTAO}
+    - {codigo: PREVIDENCIA, nome: Previdência privada, plano: CONTRIBUICAO_6}
+  acessos: [EMAIL, CRM_VAREJO, CREDITO_ALCADA_3, TESOURARIA_AGENCIA, APROVACAO_PONTO_EQUIPE, PORTAL_GESTOR, PLATAFORMA_INVESTIMENTOS]
+  equipamentos: [NOTEBOOK, CELULAR_CORPORATIVO]
+  clausulas: []
+  certificacoes_exigidas: [CPA-20]
+elegibilidade_entrada:
+  - id: GAG-ENT-01
+    descricao: Gerente de agência exige CPA-20
+    expressao: "possui_certificacao('CPA-20')"
+    tipo: BLOQUEANTE
+    base_legal: Autorregulação ANBIMA (ilustrativa)
+    explicacao_falha: Gerente de agência sem CPA-20.
+  - id: GAG-ENT-02
+    descricao: Gerente de agência exige 36 meses de casa
+    expressao: "meses_de_casa >= 36"
+    tipo: EXCECIONAVEL
+    aprovadores: [HRBP]
+    explicacao_falha: "Colaborador tem {meses_de_casa} meses de casa; o cargo pede 36."
+compliance:
+  - id: GAG-CMP-01
+    descricao: Média gerência possui celular corporativo
+    expressao: "colaborador.situacao != 'ATIVO' or possui_equipamento('CELULAR_CORPORATIVO')"
+    tipo: BLOQUEANTE
+    base_legal: Política de mobilidade corporativa
+    explicacao_falha: Gerente de agência ativo sem celular corporativo.
+---
+codigo: CARGO_SUPERINTENDENTE
+tipo: CARGO
+cargo: SUPERINTENDENTE
+nome: Superintendente Regional
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+familia: EXECUTIVO
+segmento: EXECUTIVO
+nivel: 7
+cargo_confianca: true
+estado_alvo:
+  regime_jornada: GESTAO_62_II
+  jornada_horas: 8
+  faixa_salarial: {min: 28000, max: 45000}
+  verbas:
+    - {codigo: GRAT_GESTAO, nome: Gratificação de gestão, valor: "=round(colaborador.salario_base * norma.gratificacao_gestao_min_percentual / 100, 2)", base_legal: CLT art. 62 II par. único}
+  beneficios:
+    - {codigo: SAUDE, nome: Plano de saúde, plano: EXECUTIVO}
+    - {codigo: ODONTO, nome: Plano odontológico, plano: PLUS}
+    - {codigo: SEGURO_VIDA, nome: Seguro de vida, plano: EXECUTIVO}
+    - {codigo: PREVIDENCIA, nome: Previdência privada, plano: CONTRIBUICAO_8}
+    - {codigo: CARRO_EXECUTIVO, nome: Carro executivo, plano: CATEGORIA_B}
+    - {codigo: CHECKUP_EXECUTIVO, nome: Check-up executivo anual, plano: PADRAO}
+  acessos: [EMAIL, PAINEL_EXECUTIVO, CREDITO_ALCADA_4, PORTAL_GESTOR, BI_CORPORATIVO]
+  equipamentos: [NOTEBOOK, CELULAR_CORPORATIVO]
+  clausulas:
+    - {codigo: GARDEN_LEAVE, nome: Garden leave, parametros: {dias: 90}}
+    - {codigo: NAO_CONCORRENCIA, nome: Não concorrência, parametros: {meses: 6}}
+  certificacoes_exigidas: []
+elegibilidade_entrada:
+  - id: SUP-ENT-01
+    descricao: Executivo exige pós-graduação
+    expressao: "escolaridade_ao_menos('POS_GRADUACAO')"
+    tipo: EXCECIONAVEL
+    aprovadores: [COMITE]
+    explicacao_falha: "Escolaridade {colaborador.escolaridade} abaixo de pós-graduação."
+compliance:
+  - id: SUP-CMP-01
+    descricao: Executivo possui cláusula de garden leave
+    expressao: "colaborador.situacao == 'DESLIGADO' or possui_clausula('GARDEN_LEAVE')"
+    tipo: BLOQUEANTE
+    base_legal: Política de executivos
+    explicacao_falha: Executivo sem cláusula de garden leave.
+---
+codigo: CARGO_DIRETOR
+tipo: CARGO
+cargo: DIRETOR
+nome: Diretor
+versao: 1
+vigencia: {inicio: "2025-01-01", fim: null}
+familia: EXECUTIVO
+segmento: EXECUTIVO
+nivel: 8
+cargo_confianca: true
+estado_alvo:
+  regime_jornada: GESTAO_62_II
+  jornada_horas: 8
+  faixa_salarial: {min: 50000, max: 90000}
+  verbas:
+    - {codigo: GRAT_GESTAO, nome: Gratificação de gestão, valor: "=round(colaborador.salario_base * norma.gratificacao_gestao_min_percentual / 100, 2)", base_legal: CLT art. 62 II par. único}
+  beneficios:
+    - {codigo: SAUDE, nome: Plano de saúde, plano: EXECUTIVO}
+    - {codigo: ODONTO, nome: Plano odontológico, plano: PLUS}
+    - {codigo: SEGURO_VIDA, nome: Seguro de vida, plano: EXECUTIVO}
+    - {codigo: PREVIDENCIA, nome: Previdência privada, plano: CONTRIBUICAO_10}
+    - {codigo: CARRO_EXECUTIVO, nome: Carro executivo, plano: CATEGORIA_A}
+    - {codigo: CHECKUP_EXECUTIVO, nome: Check-up executivo anual, plano: PREMIUM}
+  acessos: [EMAIL, PAINEL_EXECUTIVO, CREDITO_ALCADA_5, PORTAL_GESTOR, BI_CORPORATIVO, COMITE_CREDITO]
+  equipamentos: [NOTEBOOK, CELULAR_CORPORATIVO]
+  clausulas:
+    - {codigo: GARDEN_LEAVE, nome: Garden leave, parametros: {dias: 180}}
+    - {codigo: NAO_CONCORRENCIA, nome: Não concorrência, parametros: {meses: 12}}
+  certificacoes_exigidas: []
+elegibilidade_entrada:
+  - id: DIR-ENT-01
+    descricao: Nomeação de diretor exige aprovação do comitê de remuneração
+    expressao: "evento.dados.aprovado_comite == True"
+    tipo: EXCECIONAVEL
+    aprovadores: [COMITE]
+    explicacao_falha: O evento não traz a aprovação do comitê de remuneração.
+  - id: DIR-ENT-02
+    descricao: Executivo exige pós-graduação
+    expressao: "escolaridade_ao_menos('POS_GRADUACAO')"
+    tipo: EXCECIONAVEL
+    aprovadores: [COMITE]
+    explicacao_falha: "Escolaridade {colaborador.escolaridade} abaixo de pós-graduação."
+compliance:
+  - id: DIR-CMP-01
+    descricao: Executivo possui cláusula de garden leave
+    expressao: "colaborador.situacao == 'DESLIGADO' or possui_clausula('GARDEN_LEAVE')"
+    tipo: BLOQUEANTE
+    base_legal: Política de executivos
+    explicacao_falha: Executivo sem cláusula de garden leave.

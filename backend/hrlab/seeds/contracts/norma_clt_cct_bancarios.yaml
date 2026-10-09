@@ -1,0 +1,143 @@
+# Norma regulatória: CLT e Convenção Coletiva dos Bancários.
+# ATENÇÃO: valores e cláusulas ILUSTRATIVOS (fictícios), inspirados na CCT FENABAN.
+# Servem para o laboratório e não devem ser usados como referência jurídica.
+codigo: NORMA_CLT_CCT_BANCARIOS
+tipo: NORMA
+nome: CLT e CCT dos bancários (valores ilustrativos)
+versao: 1
+vigencia:
+  inicio: "2025-09-01"
+  fim: null
+descricao: >
+  Parâmetros e regras regulatórias que valem para todos os colaboradores: jornada do
+  bancário (CLT art. 224), cargo de confiança (art. 224 par. 2), cargo de gestão
+  (art. 62 II), pisos, vale-refeição, vale-alimentação, auxílio-creche, estabilidades,
+  aviso prévio proporcional (Lei 12.506/2011) e irredutibilidade salarial.
+aviso: Valores fictícios para simulação. Não é aconselhamento jurídico.
+parametros:
+  data_base: "09-01"
+  reajuste_percentual_referencia: 5.5
+  piso_escritorio: 3600.0
+  piso_caixa: 4400.0
+  jornada_bancario_horas: 6
+  jornada_confianca_horas: 8
+  gratificacao_funcao_min_percentual: 55
+  gratificacao_gestao_min_percentual: 40
+  gratificacao_caixa_valor: 900.0
+  vr_valor_dia: 52.0
+  vr_dias_mes: 22
+  va_valor_mensal: 1050.0
+  auxilio_creche_valor: 620.0
+  auxilio_creche_idade_max_meses: 71
+  afastamento_manutencao_vr_dias: 180
+  estabilidade_pre_aposentadoria_meses: 24
+  estabilidade_pre_aposentadoria_anos_casa: 5
+  idade_aposentadoria_referencia: 62
+  adicional_transferencia_percentual: 25
+  aviso_previo_base_dias: 30
+  aviso_previo_dias_por_ano: 3
+  aviso_previo_max_dias: 90
+  licenca_maternidade_dias: 180
+  licenca_paternidade_dias: 20
+  estabilidade_acidentaria_meses: 12
+  fgts_percentual: 8
+  multa_fgts_sem_justa_causa: 40
+  multa_fgts_acordo: 20
+  sindicatos:
+    - {codigo: SEEB-SP, nome: Sindicato dos Bancários de São Paulo, ufs: [SP]}
+    - {codigo: SEEB-RJ, nome: Sindicato dos Bancários do Rio de Janeiro, ufs: [RJ, ES]}
+    - {codigo: SEEB-BH, nome: Sindicato dos Bancários de Belo Horizonte, ufs: [MG]}
+    - {codigo: SEEB-POA, nome: Sindicato dos Bancários de Porto Alegre, ufs: [RS, SC, PR]}
+    - {codigo: SEEB-PE, nome: Sindicato dos Bancários de Pernambuco, ufs: [PE, BA, CE]}
+    - {codigo: SEEB-DF, nome: Sindicato dos Bancários de Brasília, ufs: [DF, GO]}
+
+# Benefícios que a norma garante independentemente do cargo.
+beneficios:
+  - codigo: VR
+    nome: Vale-refeição
+    plano: CCT
+    valor: "=norma.vr_valor_dia * norma.vr_dias_mes"
+    quando: "=colaborador.situacao in ['ATIVO', 'GARDEN_LEAVE'] or (colaborador.situacao == 'AFASTADO' and dias_afastado <= norma.afastamento_manutencao_vr_dias)"
+    base_legal: CCT cláusula de auxílio-refeição (ilustrativa)
+  - codigo: VA
+    nome: Vale-alimentação
+    plano: CCT
+    valor: "=norma.va_valor_mensal"
+    quando: "=colaborador.situacao in ['ATIVO', 'GARDEN_LEAVE', 'AFASTADO']"
+    base_legal: CCT cláusula de auxílio-cesta-alimentação (ilustrativa)
+  - codigo: AUXILIO_CRECHE
+    nome: Auxílio-creche/babá
+    plano: CCT
+    valor: "=norma.auxilio_creche_valor * dependentes_menores_de(norma.auxilio_creche_idade_max_meses)"
+    quando: "=colaborador.situacao != 'DESLIGADO' and dependentes_menores_de(norma.auxilio_creche_idade_max_meses) > 0"
+    base_legal: CCT cláusula de auxílio-creche/babá (ilustrativa)
+
+# Ajustes do estado alvo conforme a situação do vínculo. Uma lista vazia remove tudo.
+estado_por_situacao:
+  DESLIGADO:
+    beneficios: []
+    verbas: []
+    acessos: []
+    equipamentos: []
+  GARDEN_LEAVE:
+    acessos: []
+    equipamentos: []
+  AFASTADO:
+    acessos: [EMAIL]
+
+# Regras de compliance que valem para qualquer colaborador, em qualquer momento.
+compliance:
+  - id: NRM-224-JORNADA
+    descricao: Bancário sem cargo de confiança cumpre jornada de até 6 horas
+    expressao: "colaborador.situacao == 'DESLIGADO' or colaborador.regime_jornada != 'NORMAL_224' or colaborador.jornada_horas <= norma.jornada_bancario_horas"
+    tipo: BLOQUEANTE
+    base_legal: CLT art. 224 caput
+    explicacao_falha: "Jornada de {colaborador.jornada_horas}h para regime normal de bancário excede o limite de {norma.jornada_bancario_horas}h."
+  - id: NRM-224-2-GRATIFICACAO
+    descricao: Cargo de confiança bancário recebe gratificação de função mínima
+    expressao: "colaborador.situacao == 'DESLIGADO' or colaborador.regime_jornada != 'CONFIANCA_224_2' or valor_verba('GRAT_FUNCAO') >= round(colaborador.salario_base * norma.gratificacao_funcao_min_percentual / 100, 2)"
+    tipo: BLOQUEANTE
+    base_legal: CLT art. 224 par. 2 e CCT (gratificação de 55%, ilustrativa)
+    explicacao_falha: "Gratificação de função de R$ {valor_verba('GRAT_FUNCAO')} abaixo de {norma.gratificacao_funcao_min_percentual}% do salário base."
+  - id: NRM-62-GRATIFICACAO
+    descricao: Cargo de gestão recebe gratificação mínima de 40%
+    expressao: "colaborador.situacao == 'DESLIGADO' or colaborador.regime_jornada != 'GESTAO_62_II' or valor_verba('GRAT_GESTAO') >= round(colaborador.salario_base * norma.gratificacao_gestao_min_percentual / 100, 2)"
+    tipo: BLOQUEANTE
+    base_legal: CLT art. 62 II e parágrafo único
+    explicacao_falha: "Gratificação de gestão abaixo de {norma.gratificacao_gestao_min_percentual}% do salário base."
+  - id: NRM-PISO
+    descricao: Salário base não inferior ao piso da categoria
+    expressao: "colaborador.situacao == 'DESLIGADO' or colaborador.salario_base >= norma.piso_escritorio"
+    tipo: BLOQUEANTE
+    base_legal: CCT cláusula de salário de ingresso (ilustrativa)
+    explicacao_falha: "Salário base R$ {colaborador.salario_base} abaixo do piso de R$ {norma.piso_escritorio}."
+  - id: NRM-VR
+    descricao: Colaborador ativo recebe vale-refeição
+    expressao: "colaborador.situacao != 'ATIVO' or possui_beneficio('VR')"
+    tipo: BLOQUEANTE
+    base_legal: CCT cláusula de auxílio-refeição (ilustrativa)
+    explicacao_falha: Colaborador ativo sem vale-refeição.
+  - id: NRM-CRECHE
+    descricao: Dependentes em idade de creche geram auxílio-creche
+    expressao: "colaborador.situacao == 'DESLIGADO' or dependentes_menores_de(norma.auxilio_creche_idade_max_meses) == 0 or possui_beneficio('AUXILIO_CRECHE')"
+    tipo: BLOQUEANTE
+    base_legal: CCT cláusula de auxílio-creche/babá (ilustrativa)
+    explicacao_falha: "Há {dependentes_menores_de(norma.auxilio_creche_idade_max_meses)} dependente(s) em idade de creche sem o benefício."
+  - id: NRM-SINDICATO
+    descricao: Enquadramento sindical compatível com a base territorial da lotação
+    expressao: "colaborador.situacao == 'DESLIGADO' or sindicato_da_uf(colaborador.uf) == colaborador.sindicato"
+    tipo: BLOQUEANTE
+    base_legal: CLT art. 511 e 516 (unicidade e base territorial)
+    explicacao_falha: "Sindicato {colaborador.sindicato} não corresponde à base da UF {colaborador.uf} ({sindicato_da_uf(colaborador.uf)})."
+  - id: NRM-DESLIGADO-SEM-ACESSO
+    descricao: Desligado não mantém acessos nem equipamentos
+    expressao: "colaborador.situacao != 'DESLIGADO' or (len(colaborador.acessos) == 0 and len(colaborador.equipamentos) == 0)"
+    tipo: BLOQUEANTE
+    base_legal: Política de segurança da informação e LGPD art. 46
+    explicacao_falha: Colaborador desligado ainda possui acessos ou equipamentos.
+  - id: NRM-GARDEN-LEAVE-SEM-ACESSO
+    descricao: Em garden leave o colaborador não acessa sistemas
+    expressao: "colaborador.situacao != 'GARDEN_LEAVE' or len(colaborador.acessos) == 0"
+    tipo: BLOQUEANTE
+    base_legal: Cláusula contratual de garden leave
+    explicacao_falha: Colaborador em garden leave ainda possui acessos.

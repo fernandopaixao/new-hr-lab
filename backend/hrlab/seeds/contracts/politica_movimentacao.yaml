@@ -1,0 +1,30 @@
+# Política interna de movimentação e remuneração (fictícia).
+codigo: POLITICA_MOVIMENTACAO
+tipo: POLITICA
+nome: Política de movimentação interna e remuneração
+versao: 1
+vigencia:
+  inicio: "2025-01-01"
+  fim: null
+descricao: >
+  Parâmetros da política interna usados pelos contratos de processo: interstício
+  mínimo no cargo, avaliação mínima, saltos de nível, limites de aumento e de bônus.
+parametros:
+  promocao:
+    meses_minimos_no_cargo: 12
+    meses_minimos_para_executivo: 24
+    avaliacao_minima: 3
+    max_saltos_nivel: 1
+    aumento_max_percentual: 25
+  merito:
+    percentual_max: 10
+    meses_desde_ultimo_aumento: 12
+    avaliacao_minima: 4
+  bonus:
+    avaliacao_minima: 3
+    multiplo_salario_max_sem_comite: 3
+  transferencia:
+    meses_minimos_na_unidade: 6
+  conduta:
+    janela_advertencias_meses: 12
+    max_advertencias: 1

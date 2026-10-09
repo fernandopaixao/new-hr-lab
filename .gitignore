@@ -218,3 +218,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# lab runtime data
+backend/data/
+frontend/node_modules/
+frontend/dist/
+.env
+dump.rdb

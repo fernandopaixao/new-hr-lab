@@ -86,7 +86,7 @@ Responda em português, de forma direta, somente com base nas evidências fornec
 - Não use emoji. Use no máximo 8 linhas.
 Responda apenas com JSON."""
 
-_EMOJI = re.compile("[\U0001F000-\U0001FAFF\U00002600-\U000027BF\U0000FE0F\U0001F900-\U0001F9FF⭐✅❌]")
+_EMOJI = re.compile("[\U0001F000-\U0001FAFF\U00002600-\U000027BF\U0000FE0F\U0001F900-\U0001F9FF\u2b50\u2705\u274c]")
 
 
 def strip_emoji(text: str) -> str:

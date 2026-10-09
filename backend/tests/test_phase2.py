@@ -68,7 +68,7 @@ def test_stats_are_exact():
 
 
 def test_strip_emoji():
-    assert strip_emoji("Pronto \U0001F680 ok ✅") == "Pronto  ok "
+    assert strip_emoji("Pronto \U0001F680 ok \u2705") == "Pronto  ok "
 
 
 def test_receipts_feed_operation_facts():

@@ -1,35 +1,31 @@
-"""Conference agent (agente de conferência) backed by Ollama.
+"""Conference agent (agente de conferência) backed by the configured LLM (see llm.py).
 
 The deterministic rules decide eligibility and compliance. The agent audits the
 plan before execution (kind AUDITORIA) and checks the execution afterwards (kind
 CONFERENCIA) as a second line of defense and ALWAYS returns a clear
 recommendation (APROVADO or REPROVADO) with findings and reasoning.
 
-Optimizations for running against a local or network Ollama:
+Optimizations (most matter for a local or network Ollama):
 - structured outputs (JSON schema in `format`) so no free text parsing is needed;
 - temperature 0 and a fixed seed for reproducible audits;
 - compact prompts: only the relevant contract excerpt, the plan and the diff;
 - `keep_alive` keeps the model loaded between cases;
 - a concurrency semaphore protects a single local GPU from overload;
 - a response cache keyed by model and prompt hash (repeated audits in stress tests);
-- a health monitor; when Ollama is down the case waits (or, if enabled in the
+- a health monitor; when the provider is down the case waits (or, if enabled in the
   settings, a heuristic simulated agent answers and is labelled as such).
 """
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import time
-from typing import Any
 
 import httpx
 
+from . import llm
+from .llm import AgentUnavailable, chat_json  # noqa: F401 - re-exported for the pipeline and the ask agent
 from .store import P, Store, dumps, now_ms
-
-
-class AgentUnavailable(Exception):
-    pass
 
 
 RESPONSE_SCHEMA = {
@@ -71,18 +67,6 @@ Regras de trabalho:
 - As regras determinísticas já foram avaliadas e vêm no contexto; não as contradiga sem motivo explícito.
 - Seja objetivo: cada achado cita a referência (regra, artigo ou cláusula) e descreve o problema em uma frase.
 - Não invente fatos que não estejam no contexto."""
-
-_semaphore: asyncio.Semaphore | None = None
-_semaphore_size = 0
-
-
-def _get_semaphore(size: int) -> asyncio.Semaphore:
-    global _semaphore, _semaphore_size
-    if _semaphore is None or _semaphore_size != size:
-        _semaphore = asyncio.Semaphore(max(1, size))
-        _semaphore_size = size
-    return _semaphore
-
 
 def _compact_employee(emp: dict | None) -> dict:
     if not emp:
@@ -141,27 +125,14 @@ def build_verification_prompt(case: dict, processo: dict) -> str:
 
 
 async def check_health(store: Store, settings: dict) -> dict:
-    url = settings["ollama_base_url"].rstrip("/")
-    model = settings["ollama_model"]
-    health: dict[str, Any] = {"url": url, "modelo": model, "verificado_em": now_ms()}
-    try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            resp = await client.get(f"{url}/api/tags")
-            resp.raise_for_status()
-            models = [m.get("name") for m in resp.json().get("models", [])]
-        available = model in models or f"{model}:latest" in models
-        emb = settings.get("embedding_model") or ""
-        health["modelo_embedding"] = emb
-        health["modelo_embedding_disponivel"] = bool(emb) and (emb in models or f"{emb}:latest" in models)
-        health.update({"ok": available, "online": True, "modelos": models, "modelo_disponivel": available,
-                       "erro": None if available else f"modelo {model} não encontrado; use 'Baixar modelo' nas configurações"})
-    except Exception as exc:  # noqa: BLE001
-        health.update({"ok": False, "online": False, "modelos": [], "modelo_disponivel": False, "erro": f"{type(exc).__name__}: {exc}"})
+    health = await llm.check_health(settings)
+    health["verificado_em"] = now_ms()
     await store.set_json(f"{P}:agent:health", health)
     return health
 
 
 async def pull_model(settings: dict, model: str | None = None) -> dict:
+    """Downloads a model into Ollama (only Ollama installs models)."""
     url = settings["ollama_base_url"].rstrip("/")
     async with httpx.AsyncClient(timeout=None) as client:
         resp = await client.post(f"{url}/api/pull", json={"model": model or settings["ollama_model"], "stream": False})
@@ -170,71 +141,14 @@ async def pull_model(settings: dict, model: str | None = None) -> dict:
 
 
 async def warmup(settings: dict) -> None:
+    if llm.provider(settings) != "ollama":
+        return
     url = settings["ollama_base_url"].rstrip("/")
     try:
         async with httpx.AsyncClient(timeout=settings["ollama_timeout_s"]) as client:
             await client.post(f"{url}/api/generate", json={"model": settings["ollama_model"], "prompt": "", "keep_alive": settings["ollama_keep_alive"]})
     except Exception:  # noqa: BLE001 - warmup is best effort
         pass
-
-
-async def _call_ollama(settings: dict, prompt: str) -> tuple[dict, dict]:
-    url = settings["ollama_base_url"].rstrip("/")
-    body = {
-        "model": settings["ollama_model"],
-        "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}],
-        "stream": False,
-        "format": RESPONSE_SCHEMA,
-        "keep_alive": settings["ollama_keep_alive"],
-        "options": {"temperature": settings["ollama_temperature"], "num_ctx": settings["ollama_num_ctx"],
-                    "num_predict": settings["ollama_num_predict"], "seed": 42},
-    }
-    async with _get_semaphore(int(settings["ollama_max_concurrency"])):
-        async with httpx.AsyncClient(timeout=settings["ollama_timeout_s"]) as client:
-            resp = await client.post(f"{url}/api/chat", json=body)
-            resp.raise_for_status()
-            data = resp.json()
-    content = (data.get("message") or {}).get("content") or ""
-    meta = {
-        "eval_count": data.get("eval_count"), "prompt_eval_count": data.get("prompt_eval_count"),
-        "total_duration_ms": int((data.get("total_duration") or 0) / 1e6),
-        "tokens_por_segundo": round(data["eval_count"] / (data["eval_duration"] / 1e9), 1) if data.get("eval_count") and data.get("eval_duration") else None,
-        "resposta_bruta": content,
-    }
-    parsed = json.loads(content)
-    return parsed, meta
-
-
-async def chat_json(settings: dict, system: str, prompt: str, schema: dict, *, model: str | None = None,
-                    num_predict: int | None = None) -> tuple[dict, dict]:
-    """Generic structured call used by the natural language agent.
-
-    Raises AgentUnavailable on connection errors and json.JSONDecodeError on an
-    invalid answer, so callers decide between fallback and retry.
-    """
-    url = settings["ollama_base_url"].rstrip("/")
-    body = {
-        "model": model or settings["ollama_model"],
-        "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
-        "stream": False,
-        "format": schema,
-        "keep_alive": settings["ollama_keep_alive"],
-        "options": {"temperature": settings["ollama_temperature"], "num_ctx": settings["ollama_num_ctx"],
-                    "num_predict": num_predict or settings["ollama_num_predict"], "seed": 42},
-    }
-    started = time.time()
-    try:
-        async with _get_semaphore(int(settings["ollama_max_concurrency"])):
-            async with httpx.AsyncClient(timeout=settings["ollama_timeout_s"]) as client:
-                resp = await client.post(f"{url}/api/chat", json=body)
-                resp.raise_for_status()
-                data = resp.json()
-    except (httpx.HTTPError, OSError) as exc:
-        raise AgentUnavailable(f"{type(exc).__name__}: {exc}") from exc
-    content = (data.get("message") or {}).get("content") or ""
-    meta = {"modelo": body["model"], "duracao_ms": int((time.time() - started) * 1000), "eval_count": data.get("eval_count"),
-            "prompt_eval_count": data.get("prompt_eval_count"), "resposta_bruta": content}
-    return json.loads(content), meta
 
 
 def _normalize(parsed: dict) -> dict:
@@ -255,7 +169,7 @@ def _normalize(parsed: dict) -> dict:
 
 
 def heuristic_review(kind: str, case: dict) -> dict:
-    """Simulated agent used only when enabled in the settings and Ollama is unavailable."""
+    """Simulated agent used only when enabled in the settings and the LLM is unavailable."""
     if kind == "AUDITORIA":
         rules = (case.get("auditoria") or {}).get("regras") or []
         ops = [o["operacao"] for o in (case.get("plano") or {}).get("operacoes") or []]
@@ -286,35 +200,37 @@ async def review(store: Store, kind: str, case: dict, processo: dict, cargo_alvo
     settings = await store.settings()
     prompt = build_audit_prompt(case, processo, cargo_alvo) if kind == "AUDITORIA" else build_verification_prompt(case, processo)
     started = time.time()
-    cache_key = f"{P}:agent:cache:" + hashlib.sha256(f"{settings['ollama_model']}|{prompt}".encode()).hexdigest()
+    prov, model = llm.provider(settings), llm.active_model(settings)
+    cache_key = f"{P}:agent:cache:" + hashlib.sha256(f"{prov}|{model}|{prompt}".encode()).hexdigest()
     if settings["agent_cache_enabled"]:
         cached = await store.get_json(cache_key)
         if cached:
             cached.update({"cache": True, "duracao_ms": int((time.time() - started) * 1000)})
             return cached
-    last_error = None
+    last_error, invalid_answer = None, False
     for attempt in range(2):
         try:
-            parsed, meta = await _call_ollama(settings, prompt if attempt == 0 else prompt + "\n\nResponda apenas com JSON válido.")
+            parsed, meta = await chat_json(settings, SYSTEM_PROMPT, prompt if attempt == 0 else prompt + "\n\nResponda apenas com JSON válido.",
+                                           RESPONSE_SCHEMA)
             result = _normalize(parsed)
             result.update({
-                "agente": "ollama", "modelo": settings["ollama_model"], "url": settings["ollama_base_url"],
-                "duracao_ms": int((time.time() - started) * 1000), "prompt": prompt, "cache": False, "tentativas": attempt + 1, **meta,
+                **meta, "agente": prov, "modelo": model, "url": settings["ollama_base_url"] if prov == "ollama" else None,
+                "duracao_ms": int((time.time() - started) * 1000), "prompt": prompt, "cache": False, "tentativas": attempt + 1,
             })
             if settings["agent_cache_enabled"]:
                 await store.r.set(cache_key, dumps(result), ex=86400)
             return result
         except json.JSONDecodeError as exc:
-            last_error = f"resposta não é JSON válido: {exc}"
+            last_error, invalid_answer = f"resposta não é JSON válido: {exc}", True
             continue
-        except (httpx.HTTPError, OSError) as exc:
-            last_error = f"{type(exc).__name__}: {exc}"
+        except AgentUnavailable as exc:
+            last_error, invalid_answer = str(exc), False
             break
-    if last_error and "JSON" in last_error:
+    if invalid_answer:
         return {
             "recomendacao": "REPROVADO", "confianca": 0.0, "resumo": "O agente respondeu em formato inválido; o caso segue para revisão humana.",
             "achados": [{"severidade": "ALTO", "referencia": "agente", "descricao": last_error}], "justificativa": last_error,
-            "agente": "ollama", "modelo": settings["ollama_model"], "prompt": prompt, "erro": last_error,
+            "agente": prov, "modelo": model, "prompt": prompt, "erro": last_error,
             "duracao_ms": int((time.time() - started) * 1000),
         }
     if settings["heuristic_fallback_enabled"]:
@@ -322,4 +238,4 @@ async def review(store: Store, kind: str, case: dict, processo: dict, cargo_alvo
         result.update({"agente": "heuristico", "modelo": "agente simulado (heurístico)", "motivo_fallback": last_error,
                        "prompt": prompt, "duracao_ms": int((time.time() - started) * 1000)})
         return result
-    raise AgentUnavailable(last_error or "Ollama indisponível")
+    raise AgentUnavailable(last_error or f"{llm.PROVIDERS[prov]['nome']} indisponível")

@@ -45,7 +45,7 @@ function Answer({ a, openCase }) {
       <div className="row">
         <b>{a.pergunta}</b>
         <span className="right row small">
-          {a.simulado ? <Badge tone="warn">agente simulado</Badge> : <Badge tone="ok">{a.rastro?.resposta?.modelo || 'Ollama'}</Badge>}
+          {a.simulado ? <Badge tone="warn">agente simulado</Badge> : <Badge tone="ok">{a.rastro?.resposta?.modelo || 'IA'}</Badge>}
           <span className="muted">confiança {Math.round((a.confianca || 0) * 100)}% · {dur(a.duracao_ms)}</span>
         </span>
       </div>
@@ -117,7 +117,7 @@ export default function Ask() {
       <div className="page-head">
         <div><h2>Perguntar aos eventos</h2><p>Agente de linguagem natural sobre todos os eventos do laboratório. Números exatos vêm das consultas; explicações vêm dos eventos mais parecidos, recuperados por embeddings. Toda resposta mostra as fontes.</p></div>
         <div className="right row small">
-          <Badge tone={idx?.estado === 'EM_DIA' ? 'ok' : idx?.estado === 'AGUARDANDO_OLLAMA' || idx?.estado === 'ERRO' ? 'bad' : 'info'}>índice: {idx?.estado || '-'}</Badge>
+          <Badge tone={idx?.estado === 'EM_DIA' ? 'ok' : idx?.estado === 'AGUARDANDO_IA' || idx?.estado === 'ERRO' ? 'bad' : 'info'}>índice: {idx?.estado || '-'}</Badge>
           <span className="muted">{idx?.documentos ?? 0} docs · {idx?.pendentes ?? 0} na fila</span>
         </div>
       </div>
@@ -131,7 +131,7 @@ export default function Ask() {
               <button className="btn primary" onClick={() => send()} disabled={busy}>{busy ? 'Pensando...' : 'Perguntar'}</button>
             </div>
             <div className="suggest">{SUGGESTIONS.map((s) => <button key={s} onClick={() => send(s)} disabled={busy}>{s}</button>)}</div>
-            <div className="small muted">Você pergunta como {persona}. Ctrl+Enter envia. Com o Ollama fora do ar a pergunta é recusada, a menos que o modo simulado esteja ligado nas configurações.</div>
+            <div className="small muted">Você pergunta como {persona}. Ctrl+Enter envia. Com a IA fora do ar a pergunta é recusada, a menos que o modo simulado esteja ligado nas configurações.</div>
           </div>
           {current ? <Answer a={current} openCase={openCase} /> : null}
         </div>

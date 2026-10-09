@@ -10,7 +10,7 @@ Cada registro segue o mesmo formato: contexto, decisão, alternativas considerad
 | [0004](0004-avaliador-de-expressoes-seguro.md) | Regras como expressões avaliadas por um interpretador seguro | desenho |
 | [0005](0005-prateleira-e-plano-derivado.md) | Prateleira desacoplada e plano derivado do estado alvo | desenho |
 | [0006](0006-regras-decidem-ia-audita.md) | Regras determinísticas decidem; o agente de IA audita e sempre recomenda | definida com o usuário |
-| [0007](0007-ollama-local-e-espera.md) | Ollama local ou na rede, qwen2.5:7b, saída estruturada; espera quando indisponível | definida com o usuário |
+| [0007](0007-ollama-local-e-espera.md) | Ollama local ou na rede, qwen2.5:7b, saída estruturada; espera quando indisponível (nuvem revista pela 0021) | definida com o usuário |
 | [0008](0008-saga-com-compensacao.md) | Execução em saga com compensação por snapshot | definida com o usuário |
 | [0009](0009-personas-sem-autenticacao.md) | Aprovações por persona, sem login, sempre registradas | definida com o usuário |
 | [0010](0010-concorrencia-trava-e-versao.md) | Trava por colaborador, versão do cadastro e replanejamento | desenho |
@@ -24,3 +24,5 @@ Cada registro segue o mesmo formato: contexto, decisão, alternativas considerad
 | [0018](0018-auditoria-antes-da-execucao.md) | Auditoria antes da execução e conferência final depois | pedida pelo usuário |
 | [0019](0019-hierarquia-e-gestor-imediato.md) | Hierarquia por gestor imediato, usada nas regras e nas aprovações | pedida pelo usuário |
 | [0020](0020-proximo-passo-explicito.md) | Próximo passo explícito em cada fase | pedida pelo usuário |
+| [0021](0021-provedores-de-llm-na-nuvem.md) | Provedores de LLM na nuvem (Claude, OpenAI e compatíveis, Gemini) ao lado do Ollama | pedida pelo usuário |
+| [0022](0022-assistente-de-configuracao-inicial.md) | Assistente de configuração inicial na interface | pedida pelo usuário |

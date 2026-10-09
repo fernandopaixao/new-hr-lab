@@ -54,7 +54,7 @@
 | Reversão | Compensação da execução inteira depois de uma conferência final reprovada e confirmada pela auditoria interna. |
 | Replanejamento | Volta ao planejamento quando o cadastro mudou entre o plano e a execução. |
 | Agente de conferência | Modelo de linguagem que audita o plano antes da execução, confere a execução depois e recomenda APROVADO ou REPROVADO. |
-| Agente simulado (heurístico) | Substituto opcional do agente quando o Ollama está fora; toda decisão dele é marcada. |
+| Agente simulado (heurístico) | Substituto opcional do agente quando a IA está fora; toda decisão dele é marcada. |
 | Persona | Papel que decide aprovações (Operador, Gestor, HRBP, Jurídico, Compliance, Auditoria, Comitê). Não há login. |
 | Gestor imediato | Colaborador indicado em `gestor_id`. Forma a hierarquia; nas aprovações do Gestor, é a pessoa real mostrada como responsável. |
 | Organograma | Árvore da hierarquia montada pelos gestores imediatos, na tela Colaboradores. |
@@ -65,3 +65,5 @@
 | Agente de perguntas | Agente que responde perguntas em linguagem natural com números dos fatos e documentos do índice. |
 | Grupo de consumidores | Recurso dos Redis Streams que entrega cada mensagem a um único worker. |
 | SSE | Server-Sent Events: canal da API para a interface receber atualizações ao vivo. |
+| Provedor de IA | Quem responde aos agentes: Ollama (padrão), Anthropic Claude, OpenAI ou compatível, ou Google Gemini. Escolhido no assistente de configuração. |
+| Assistente de configuração | Tela que abre na primeira visita e guia a escolha do provedor, do modelo e da chave de API, com teste de conexão. |

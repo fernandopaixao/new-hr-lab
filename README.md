@@ -15,7 +15,7 @@ evento -> gatilho -> elegibilidade -> planejamento -> auditoria -> execução (s
   - **cargo**: estado alvo e compliance de cada posição, como garden leave para executivos e celular corporativo para a média gerência;
   - **processo**: elegibilidade, orquestração e auditoria, avaliada antes de qualquer sistema ser alterado.
 - **Prateleira de serviços**: operações desacopladas e parametrizáveis que qualquer processo pode chamar, como adicionar benefício, alterar salário, incluir verba de bônus ou revogar acesso.
-- **Agente de conferência com IA (Ollama)**: audita o plano antes da execução, confere a execução depois e sempre dá uma recomendação clara, APROVADO ou REPROVADO, com justificativa. Regras determinísticas decidem; o agente é a segunda linha de defesa.
+- **Agente de conferência com IA**: Ollama local ou na rede por padrão, ou Anthropic Claude, OpenAI (e serviços compatíveis) ou Google Gemini na nuvem. Ele audita o plano antes da execução, confere a execução depois e sempre dá uma recomendação clara, APROVADO ou REPROVADO, com justificativa. Regras determinísticas decidem; o agente é a segunda linha de defesa.
 - **Hierarquia**: cada colaborador tem gestor imediato; o organograma é navegável, as regras usam a hierarquia e as aprovações do gestor mostram o gestor real.
 - **Próximo passo** explícito em cada fase e em cada caso: o que acontece agora e quem precisa agir.
 - **Aprovações de exceção** por persona, com justificativa registrada.
@@ -27,7 +27,7 @@ A documentação completa, com as decisões arquiteturais, está em [docs/](docs
 
 ## Como rodar
 
-Pré-requisitos: Docker com Compose 2.24 ou mais novo. O Ollama é opcional: o instalador usa o da máquina, um da rede ou sobe um em container.
+Pré-requisitos: Docker com Compose 2.24 ou mais novo. O Ollama é opcional: o instalador usa o da máquina, um da rede ou sobe um em container, e a IA também pode ser um provedor na nuvem.
 
 ```bash
 ./scripts/install.sh            # Linux e macOS
@@ -37,7 +37,7 @@ Pré-requisitos: Docker com Compose 2.24 ou mais novo. O Ollama é opcional: o i
 scripts\install.cmd             # Windows (ou .\scripts\install.ps1)
 ```
 
-O instalador confere os pré-requisitos, encontra o Ollama, testa se os containers o alcançam, grava o `.env`, baixa os modelos, sobe o laboratório e confere a IA de dentro da API. Ao final, abra http://localhost:8580. Com `--sim` (ou `-Sim` no Windows) ele não faz perguntas; `--ajuda` lista as opções. Os detalhes estão em [docs/operacao.md](docs/operacao.md#instalador).
+O instalador confere os pré-requisitos, encontra o Ollama, testa se os containers o alcançam, grava o `.env`, baixa os modelos, sobe o laboratório e confere a IA de dentro da API. Ao final, abra http://localhost:8580. Na primeira visita, o **assistente de configuração inicial** pede o provedor de IA, o modelo e, para a nuvem, a chave de API, e testa a conexão antes de salvar ([detalhes](docs/operacao.md#assistente-de-configuração-inicial)). Com `--sim` (ou `-Sim` no Windows) ele não faz perguntas; `--ajuda` lista as opções. Os detalhes estão em [docs/operacao.md](docs/operacao.md#instalador).
 
 Sem o instalador:
 
@@ -58,7 +58,11 @@ docker compose up -d --build
 - Para subir o Ollama junto, em CPU, com download automático do modelo, use `docker compose --profile ollama up -d --build`.
 - Os modelos padrão são `qwen2.5:7b` (agentes) e `nomic-embed-text` (embeddings). Baixe com `ollama pull` ou pelos botões da tela de Configurações.
 
-Se o Ollama estiver fora do ar, os casos param em "Aguardando agente de IA" e são retomados sozinhos quando ele volta. Para demonstrações sem IA, ligue o agente heurístico simulado em Configurações ou use `HEURISTIC_FALLBACK_ENABLED=true`. Toda decisão desse agente fica marcada como simulada.
+### IA na nuvem
+
+Escolha no assistente (ou em Configurações) entre Anthropic Claude, OpenAI ou compatível (Azure OpenAI, OpenRouter, Groq, vLLM, trocando a URL base) e Google Gemini. A chave digitada no assistente fica num arquivo do volume de dados, nunca no Redis nem no log; uma chave em `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` ou `GEMINI_API_KEY` no `.env` tem prioridade. Com um provedor na nuvem, os dados dos casos (fictícios) vão para a API do provedor, que cobra por uso. Veja [docs/agentes.md](docs/agentes.md#provedores).
+
+Se a IA estiver fora do ar, os casos param em "Aguardando agente de IA" e são retomados sozinhos quando ela volta. Para demonstrações sem IA, ligue o agente heurístico simulado em Configurações ou use `HEURISTIC_FALLBACK_ENABLED=true`. Toda decisão desse agente fica marcada como simulada.
 
 ### Estresse
 
@@ -82,7 +86,7 @@ Na tela Cenários, a aba "Rajada de eventos" dispara dezenas de eventos aleatór
 | Contratos | Editor estruturado e YAML para incluir ou remover regras e operações, mudar vigências e salvar como nova versão. |
 | Prateleira | Catálogo de operações, com execução avulsa ou simulada. |
 | Log | Todas as decisões e alterações, com filtro e exportação em JSONL. |
-| Configurações | Parâmetros do Ollama, modelos de embedding e de perguntas, modo de revisão humana, atraso visual, injeção de falhas e reinício do laboratório. |
+| Configurações | Provedor de IA e assistente de configuração, parâmetros do Ollama e da nuvem, gerador de embeddings e modelo de perguntas, modo de revisão humana, atraso visual, injeção de falhas e reinício do laboratório. |
 
 ## Desenvolvimento local
 
@@ -92,7 +96,7 @@ cd backend && pip install -r requirements.txt -r requirements-dev.txt
 python -m hrlab.worker &
 python -m hrlab.indexer &
 uvicorn hrlab.api:app --reload --port 8000
-python -m pytest -q tests      # 27 testes, sem Redis e sem Ollama
+python -m pytest -q tests      # 42 testes, sem Redis e sem rede
 
 # frontend
 cd frontend && npm install && npm run dev   # http://localhost:5173
@@ -107,9 +111,11 @@ backend/hrlab/
   pipeline.py       handlers de cada estágio, aprovações, depuração e saga
   engine.py         regras, elegibilidade, plano, conferência e auditoria (lógica pura)
   shelf.py          prateleira de operações e compensação
-  agent.py          agente de conferência com Ollama (e heurístico opcional)
+  agent.py          agente de conferência (e heurístico opcional)
+  llm.py            provedores de IA: Ollama, Claude, OpenAI e compatíveis, Gemini
+  apikeys.py        chaves de API dos provedores na nuvem
   facts.py          modelo de leitura: fatos por caso, narrativas e painel
-  embeddings.py     embeddings via Ollama, modo simulado e busca vetorial
+  embeddings.py     embeddings pelo provedor escolhido, modo simulado e busca vetorial
   indexer.py        serviço que indexa os eventos a partir do log
   ask.py            agente de perguntas em linguagem natural
   contracts.py      repositório versionado de contratos

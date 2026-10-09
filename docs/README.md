@@ -11,10 +11,10 @@ Esta pasta explica o propósito, o desenho e as decisões da arquitetura. Ela fo
 | [Decisões arquiteturais](adr/README.md) | Arquitetos | Por que cada escolha foi feita, quais alternativas foram descartadas e o que muda se a premissa mudar |
 | [Contratos](contratos.md) | Quem modela regras de RH | Como escrever normas, políticas, contratos de cargo e de processo; vocabulário das expressões |
 | [Prateleira de operações](prateleira.md) | Quem integra sistemas | Catálogo de operações, parâmetros, campos alterados e como criar uma nova |
-| [Agentes de IA](agentes.md) | Quem opera ou ajusta a IA | Agente de conferência, agente de perguntas, embeddings, prompts, modo simulado e ajuste do Ollama |
+| [Agentes de IA](agentes.md) | Quem opera ou ajusta a IA | Agente de conferência, agente de perguntas, embeddings, provedores de IA (Ollama, Claude, OpenAI, Gemini), prompts, modo simulado e ajustes |
 | [Visibilidade](visibilidade.md) | Operação e gestão | Estratégia de observabilidade: painel, métricas, log de decisões, rastreio por caso e alertas |
 | [Cenários](cenarios.md) | Quem testa | Os 47 cenários do gerador, com o resultado esperado de cada um |
-| [Operação](operacao.md) | Quem roda o laboratório | Como instalar com os scripts, subir, configurar o Ollama, escalar, estressar, depurar e resolver problemas |
+| [Operação](operacao.md) | Quem roda o laboratório | Como instalar com os scripts, usar o assistente de configuração, configurar o Ollama ou um provedor na nuvem, escalar, estressar, depurar e resolver problemas |
 | [API](api.md) | Integradores | Rotas HTTP agrupadas por assunto |
 | [Glossário](glossario.md) | Todos | Termos de RH, de regulação e da arquitetura usados no laboratório |
 

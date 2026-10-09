@@ -154,7 +154,7 @@ class Pipeline:
         except agent.AgentUnavailable as exc:
             case = await self.store.get_case(case_id) or case
             case.update({"status": AGUARDANDO_AGENTE, "estagio": stage,
-                         "resumo": f"Agente de IA indisponível ({exc}). O caso aguarda o Ollama voltar; o fallback heurístico está desligado."})
+                         "resumo": f"Agente de IA indisponível ({exc}). O caso aguarda o provedor de IA voltar; o fallback heurístico está desligado."})
             case["etapas"][stage].update({"status": "AGUARDANDO", "aguardando": "agente"})
             await self.store.save_case(case)
             await self.store.r.hset(WAITING_AGENT_SET, case_id, stage)

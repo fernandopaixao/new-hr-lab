@@ -1,12 +1,29 @@
 # Agentes de IA
 
-O laboratório usa modelos locais no Ollama em três papéis. Nenhum deles decide sozinho o destino de um caso nem calcula números: regras determinísticas decidem, e os números vêm dos fatos (veja as ADRs [0006](adr/0006-regras-decidem-ia-audita.md), [0007](adr/0007-ollama-local-e-espera.md), [0016](adr/0016-embeddings-de-todos-os-eventos.md) e [0017](adr/0017-agente-de-linguagem-natural.md)).
+O laboratório usa modelos de linguagem em três papéis. O padrão é um modelo local no Ollama; Anthropic Claude, OpenAI (ou um serviço compatível) e Google Gemini também podem ser usados (veja [Provedores](#provedores)). Nenhum deles decide sozinho o destino de um caso nem calcula números: regras determinísticas decidem, e os números vêm dos fatos (veja as ADRs [0006](adr/0006-regras-decidem-ia-audita.md), [0007](adr/0007-ollama-local-e-espera.md), [0016](adr/0016-embeddings-de-todos-os-eventos.md), [0017](adr/0017-agente-de-linguagem-natural.md) e [0021](adr/0021-provedores-de-llm-na-nuvem.md)).
 
 | Papel | Modelo padrão | Código | Onde aparece |
 | --- | --- | --- | --- |
-| Agente de conferência | `qwen2.5:7b` (`OLLAMA_MODEL`) | `agent.py` | Auditoria (antes da execução) e conferência final |
-| Embeddings | `nomic-embed-text` (`EMBEDDING_MODEL`) | `embeddings.py`, `indexer.py` | Índice de todos os eventos, busca semântica |
+| Agente de conferência | `qwen2.5:7b` (`OLLAMA_MODEL`) ou o modelo do provedor escolhido | `agent.py`, `llm.py` | Auditoria (antes da execução) e conferência final |
+| Embeddings | `nomic-embed-text` (`EMBEDDING_MODEL`), ou OpenAI, Gemini ou simulado | `embeddings.py`, `indexer.py`, `llm.py` | Índice de todos os eventos, busca semântica |
 | Agente de perguntas | o mesmo do conferente, ou `ask_model` | `ask.py` | Tela Perguntar |
+
+## Provedores
+
+O provedor dos agentes (`llm_provider`) e o gerador de embeddings (`embedding_provider`) são escolhidos no assistente de configuração inicial, que abre na primeira visita, ou em Configurações. Toda chamada passa por `llm.py`.
+
+| Provedor | Saída estruturada | Modelos sugeridos | Embeddings |
+| --- | --- | --- | --- |
+| Ollama (padrão) | `format` com o JSON Schema | `qwen2.5:7b`, `qwen2.5:3b`, `qwen2.5:14b` | `nomic-embed-text` |
+| Anthropic Claude | `output_config.format` com esquema fechado | `claude-opus-5-5` (padrão), `claude-sonnet-5-5`, `claude-haiku-5-5` | não oferece |
+| OpenAI ou compatível | `response_format` `json_schema` estrito | `gpt-5-mini`, `gpt-5`, `gpt-4.1-mini` | `text-embedding-3-small` |
+| Google Gemini | `responseSchema` | `gemini-2.5-flash`, `gemini-2.5-pro` | `gemini-embedding-001` |
+
+- **Claude.** O esforço de raciocínio (`anthropic_effort`, padrão `medium`) troca cuidado por tempo e custo. Nos modelos que aceitam, uma recusa de segurança é refeita no servidor por um modelo alternativo.
+- **OpenAI ou compatível.** Troque a URL base (`openai_base_url`) para usar Azure OpenAI, OpenRouter, Groq, vLLM ou LM Studio. Se o modelo só aceita a temperatura padrão, ou o servidor não aceita `json_schema`, há uma segunda tentativa adaptada.
+- **Chaves de API.** Vêm do `.env` (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) ou do assistente, que grava `secrets.json` no volume de dados. O `.env` tem prioridade. A chave nunca vai para o Redis nem para o log e nunca volta pela API; a interface mostra só os quatro últimos caracteres.
+- **Erros.** Chave recusada, modelo inexistente, cota estourada ou falta de rede contam como IA indisponível: o caso aguarda, como com o Ollama fora do ar.
+- **Custo e privacidade.** Com um provedor na nuvem, os dados dos casos (fictícios neste laboratório) vão para a API do provedor, que cobra por uso. O cache de respostas evita chamadas repetidas.
 
 ## Agente de conferência
 
@@ -30,7 +47,7 @@ O prompt completo e a resposta bruta ficam gravados no caso e aparecem na aba do
 
 ### O que devolve
 
-A resposta é restrita por um esquema JSON passado ao Ollama (`format`):
+A resposta é restrita por um esquema JSON passado ao provedor (no Ollama, `format`; nos outros, a saída estruturada de cada API):
 
 ```json
 {
@@ -63,14 +80,14 @@ Na revisão humana, a pessoa vê a recomendação do agente ao lado das regras e
 
 ### Cache, concorrência e desempenho
 
-- Respostas são guardadas por 24 horas, com chave no hash do modelo e do prompt. Cenários repetidos não chamam o modelo de novo. Desligue em Configurações para medir latência real.
-- Um semáforo limita as chamadas simultâneas (`ollama_max_concurrency`, padrão 1). Com GPU e `OLLAMA_NUM_PARALLEL` no servidor, aumente.
+- Respostas são guardadas por 24 horas, com chave no hash do provedor, do modelo e do prompt. Cenários repetidos não chamam o modelo de novo. Desligue em Configurações para medir latência real.
+- Um semáforo limita as chamadas simultâneas: `ollama_max_concurrency` (padrão 1; com GPU e `OLLAMA_NUM_PARALLEL` no servidor, aumente) e `cloud_max_concurrency` (padrão 4) para os provedores na nuvem.
 - `ollama_keep_alive` mantém o modelo carregado; o worker faz um aquecimento quando o Ollama fica saudável.
 - `ollama_num_ctx` (8192) e `ollama_num_predict` (900) cobrem os prompts maiores (desligamento de executivo). Temperatura 0 torna a resposta estável.
 
-### Ollama fora do ar
+### IA fora do ar
 
-O caso para em **Aguardando agente de IA** e entra em `hr:waiting_agent`. O monitor de cada worker verifica a saúde a cada 10 segundos e devolve os casos para a fila quando o Ollama volta.
+O caso para em **Aguardando agente de IA** e entra em `hr:waiting_agent`. O monitor de cada worker verifica a saúde a cada 10 segundos (no Ollama, `/api/tags`; na nuvem, a lista de modelos da conta) e devolve os casos para a fila quando a IA volta.
 
 Com **agente heurístico simulado** ligado (Configurações ou `HEURISTIC_FALLBACK_ENABLED=true`), um avaliador simples responde no lugar:
 
@@ -103,9 +120,9 @@ O serviço `indexer` lê `hr:log` com o grupo `hr-indexer`. Cada entrada marca o
 3. A similaridade é o cosseno exato, somado a um pequeno reforço lexical para palavras da pergunta que aparecem no texto.
 4. Filtros por tipo de evento, status e tipo de documento são aplicados antes da ordenação.
 
-### Sem Ollama
+### Sem IA para embeddings
 
-O indexador mostra **Aguardando Ollama** e acumula as marcas. Com o modo simulado ligado, usa um embedding de hashing de 512 dimensões (palavras, prefixos de 5 letras e bigramas, sem stopwords). Esses documentos ficam em `hr:vec:simulated` e são refeitos com o modelo real quando ele volta. Vetores de modelos diferentes nunca são comparados entre si.
+O indexador mostra **Aguardando IA** e acumula as marcas. Com o gerador `simulado`, o embedding de hashing descrito abaixo é o modelo escolhido, e não um substituto. Com o modo simulado ligado, usa um embedding de hashing de 512 dimensões (palavras, prefixos de 5 letras e bigramas, sem stopwords). Esses documentos ficam em `hr:vec:simulated` e são refeitos com o modelo real quando ele volta. Vetores de modelos diferentes nunca são comparados entre si.
 
 ## Agente de perguntas
 
@@ -115,7 +132,7 @@ A tela **Perguntar** aceita perguntas como "quantas promoções foram barradas p
 2. **Evidências.** Filtros e agregações rodam sobre os fatos, em Python. Os números são exatos. A busca semântica traz os documentos mais próximos (`ask_top_k`, padrão 8), respeitando os filtros.
 3. **Resposta.** O modelo escreve a resposta só com as estatísticas e os documentos (`ANSWER_SCHEMA`), cita os casos usados e declara limitações. Citações que não estão nas evidências são removidas. Emoji são retirados do texto.
 
-Se o Ollama estiver fora do ar, a API responde 503, a menos que o modo simulado esteja ligado; nesse caso, um interpretador por palavras-chave e uma resposta por modelo de texto respondem, marcados como simulados. As 50 últimas perguntas ficam em `hr:ask:history`.
+Se a IA estiver fora do ar, a API responde 503, a menos que o modo simulado esteja ligado; nesse caso, um interpretador por palavras-chave e uma resposta por modelo de texto respondem, marcados como simulados. As 50 últimas perguntas ficam em `hr:ask:history`.
 
 ## Ajustes recomendados
 
@@ -126,3 +143,5 @@ Se o Ollama estiver fora do ar, a API responde 503, a menos que o modo simulado 
 | Perguntas rápidas com conferente pesado | `ask_model` com um modelo menor. |
 | Respostas truncadas | Aumente `ollama_num_predict` ou `ollama_num_ctx`. |
 | Timeout na primeira chamada | Aumente `ollama_timeout_s`; o modelo está carregando. |
+| Sem GPU e com rede | Um provedor na nuvem pelo assistente de configuração; com Claude, `anthropic_effort` em `low` deixa as chamadas mais rápidas. |
+| Respostas da nuvem truncadas | Aumente `cloud_max_tokens` (o raciocínio do modelo também conta). |

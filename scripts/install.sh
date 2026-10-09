@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Instalador do laboratorio Novo RH para Linux e macOS.
 #
-# Verifica os pre-requisitos, escolhe onde esta o Ollama, grava o .env,
-# baixa os modelos, sobe o Docker Compose e confere se a API enxerga o Ollama.
+# Verifica os pre-requisitos, escolhe onde esta o Ollama (ou se a IA fica na
+# nuvem), grava o .env, baixa os modelos, sobe o Docker Compose e confere se a
+# API enxerga a IA. Na primeira vez, a interface abre o assistente de
+# configuracao inicial, onde se escolhe o provedor de IA e a chave de API.
 #
 #   ./scripts/install.sh            instalacao guiada
 #   ./scripts/install.sh --sim      sem perguntas, com os padroes
@@ -52,12 +54,15 @@ usage() {
 Uso: ./scripts/install.sh [opcoes]
 
 Onde esta o Ollama:
-  --ollama MODO       auto (padrao), local, rede, container ou nenhum
+  --ollama MODO       auto (padrao), local, rede, container, nuvem ou nenhum
                         auto       usa o Ollama desta maquina se ele responder;
                                    senao pergunta (com --sim, usa container)
                         local      Ollama instalado nesta maquina
                         rede       Ollama em outra maquina (exige --ollama-url)
                         container  sobe o Ollama em container, em CPU
+                        nuvem      sem Ollama; a IA e um provedor na nuvem
+                                   (Claude, OpenAI ou Gemini), escolhido no
+                                   assistente da interface
                         nenhum     sem Ollama; liga o agente simulado
   --ollama-url URL    URL do Ollama na rede, ex.: http://192.168.0.10:11434
 
@@ -99,7 +104,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-case "$OLLAMA_MODE" in auto|local|rede|container|nenhum) ;; *) fail "--ollama deve ser auto, local, rede, container ou nenhum" ;; esac
+case "$OLLAMA_MODE" in auto|local|rede|container|nuvem|nenhum) ;; *) fail "--ollama deve ser auto, local, rede, container, nuvem ou nenhum" ;; esac
 case "$WORKERS" in ''|*[!0-9]*) fail "--workers deve ser um numero" ;; esac
 [ "$WORKERS" -ge 1 ] || fail "--workers deve ser pelo menos 1"
 for p in "$PORT" "$OLLAMA_PORT"; do
@@ -261,13 +266,15 @@ if [ "$OLLAMA_MODE" = "auto" ]; then
     info "Escolha como o laboratorio vai usar a IA:"
     info "  1) Ollama em container, em CPU (baixa cerca de 5 GB) (recomendado)"
     info "  2) Ollama em outra maquina da rede"
-    info "  3) Sem Ollama, com o agente simulado"
+    info "  3) IA na nuvem (Claude, OpenAI ou Gemini), escolhida no assistente da interface"
+    info "  4) Sem IA, com o agente simulado"
     ask "Opcao" "1"
     case "$REPLY" in
       1) OLLAMA_MODE="container" ;;
       2) OLLAMA_MODE="rede"; ask "URL do Ollama (ex.: http://192.168.0.10:11434)" ""; OLLAMA_URL="$REPLY"
          [ -n "$OLLAMA_URL" ] || fail "URL do Ollama nao informada" ;;
-      3) OLLAMA_MODE="nenhum" ;;
+      3) OLLAMA_MODE="nuvem" ;;
+      4) OLLAMA_MODE="nenhum" ;;
       *) fail "opcao invalida: $REPLY" ;;
     esac
   fi
@@ -303,6 +310,12 @@ case "$OLLAMA_MODE" in
       warn "Com ${MEM_GB} GB de memoria, o $MODEL pode ficar lento ou nao carregar. Considere --modelo qwen2.5:3b."
     fi
     ok "Modo: Ollama em container, em CPU (porta $OLLAMA_PORT na maquina)"
+    ;;
+  nuvem)
+    HOST_URL=""
+    CONTAINER_URL="$(env_get OLLAMA_BASE_URL)"; [ -n "$CONTAINER_URL" ] || CONTAINER_URL="http://host.docker.internal:11434"
+    PULL_MODELS=0
+    ok "Modo: IA na nuvem; escolha o provedor e informe a chave no assistente da interface"
     ;;
   nenhum)
     HOST_URL=""
@@ -426,6 +439,13 @@ step "Conferindo a IA de dentro dos containers"
 CHECK="$(curl -fsS --noproxy "*" --max-time 15 -X POST "$API/agent/check" 2>/dev/null || true)"
 if [ "$OLLAMA_MODE" = "nenhum" ]; then
   info "Sem Ollama: o agente simulado responde no lugar e o indexador usa embeddings simulados."
+elif [ "$OLLAMA_MODE" = "nuvem" ]; then
+  if grep -q '"ok": *true' <<< "$CHECK"; then
+    ok "A API alcanca o provedor de IA configurado"
+  else
+    info "Abra a interface: o assistente de configuracao pede o provedor (Claude, OpenAI ou Gemini), o modelo e a chave de API."
+    info "Ate la, os casos aguardam a IA."
+  fi
 elif grep -q '"ok": *true' <<< "$CHECK"; then
   ok "A API alcanca o Ollama em $CONTAINER_URL e o modelo $MODEL esta pronto"
   grep -q '"modelo_embedding_disponivel": *true' <<< "$CHECK" \
@@ -445,10 +465,17 @@ else
 fi
 
 # --------------------------------------------------------------- resumo
-if [ "$OLLAMA_MODE" = "nenhum" ]; then OLLAMA_SUMMARY="nenhum (agente simulado)"; else OLLAMA_SUMMARY="$OLLAMA_MODE ($CONTAINER_URL)"; fi
+if [ "$OLLAMA_MODE" = "nenhum" ]; then OLLAMA_SUMMARY="nenhum (agente simulado)"
+elif [ "$OLLAMA_MODE" = "nuvem" ]; then OLLAMA_SUMMARY="nenhum (IA na nuvem, definida no assistente)"; else OLLAMA_SUMMARY="$OLLAMA_MODE ($CONTAINER_URL)"; fi
+if curl -fsS --noproxy "*" --max-time 10 "$API/setup" 2>/dev/null | grep -q '"concluido": *true'; then
+  SETUP_SUMMARY="ja feita; para refazer, Configuracoes, Abrir assistente de configuracao"
+else
+  SETUP_SUMMARY="abra a interface: o assistente de configuracao inicial aparece na primeira visita"
+fi
 step "Pronto"
 cat <<EOF
   Interface:        http://localhost:$PORT
+  Configuracao:     $SETUP_SUMMARY
   Ollama:           $OLLAMA_SUMMARY
   Modelos:          $MODEL e $EMBED_MODEL
   Workers:          $WORKERS

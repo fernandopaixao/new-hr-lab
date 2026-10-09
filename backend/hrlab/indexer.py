@@ -20,7 +20,8 @@ import socket
 import redis.asyncio as aioredis
 
 from . import embeddings as emb
-from .agent import AgentUnavailable
+from . import llm
+from .llm import AgentUnavailable
 from .facts import INDEXED_LOG_KINDS, case_document, log_document
 from .logbook import _parse
 from .store import LOG_STREAM, Store, now_ms
@@ -65,7 +66,7 @@ async def index_refs(store: Store, refs: list[str]) -> dict:
     todo = []
     for d in docs:
         h, model = await emb.existing_hash(store, d["id"])
-        if h == d["hash"] and model in (settings["embedding_model"], emb.HASH_MODEL) and not (
+        if h == d["hash"] and model in (llm.embedding_model(settings), emb.HASH_MODEL) and not (
                 model == emb.HASH_MODEL and await _real_model_ok(store, settings)):
             continue
         todo.append(d)
@@ -150,7 +151,7 @@ class Indexer:
                     await self._status(estado="DESLIGADO", mensagem="Indexação desligada nas configurações.")
                     await asyncio.sleep(3)
                     continue
-                # documents embedded with the simulated model go back to the queue once Ollama is back
+                # documents embedded with the simulated model go back to the queue once the real model is back
                 if await self.store.r.scard(emb.SIMULATED_KEY) and await _real_model_ok(self.store, settings):
                     sims = await self.store.r.smembers(emb.SIMULATED_KEY)
                     await emb.mark_dirty(self.store, {s: 0 for s in sims})
@@ -168,7 +169,7 @@ class Indexer:
                 await self._status(estado="INDEXANDO", mensagem=f"{result['embutidos']} documento(s) embutidos com {result['modelo'] or '-'}.",
                                    ultimo_lote=result)
             except AgentUnavailable as exc:
-                await self._status(estado="AGUARDANDO_OLLAMA", mensagem=f"Aguardando o Ollama para gerar embeddings: {exc}. "
+                await self._status(estado="AGUARDANDO_IA", mensagem=f"Aguardando o provedor de embeddings: {exc}. "
                                    "Os eventos continuam marcados e serão indexados quando ele voltar.")
                 await asyncio.sleep(10)
             except asyncio.CancelledError:

@@ -14,8 +14,8 @@ from fastapi import Body, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, StreamingResponse
 
-from . import agent, ask, embeddings as emb, engine, facts as factsmod, indexer, logbook as log, migrations, shelf
-from .config import DEFAULT_SETTINGS
+from . import agent, apikeys, ask, embeddings as emb, engine, facts as factsmod, indexer, llm, logbook as log, migrations, shelf
+from .config import DEFAULT_SETTINGS, REDIS_URL
 from .context import Ctx
 from .contracts import ContractError, ContractRepo, from_yaml, to_yaml, validate
 from .domain import (
@@ -130,20 +130,86 @@ async def get_settings() -> dict:
     return {"valores": await store.settings(), "padroes": DEFAULT_SETTINGS}
 
 
-@app.put("/api/settings")
-async def put_settings(patch: dict = Body(...), x_persona: str = Header("OPERADOR")) -> dict:
+async def apply_settings(patch: dict, persona: str, motivo: str = "Configurações alteradas") -> dict:
     before = await store.settings()
     try:
         after = await store.update_settings(patch)
     except ValueError as exc:
         raise http_error(exc) from exc
     changes = {k: {"antes": before.get(k), "depois": v} for k, v in after.items() if before.get(k) != v}
-    await log.write(store, log.CONFIG_ALTERADA, "Configurações alteradas: " + ", ".join(f"{k}={v['depois']}" for k, v in changes.items()),
-                    ator=f"persona:{x_persona}", dados=changes)
-    if "embedding_model" in changes:
+    if changes:
+        await log.write(store, log.CONFIG_ALTERADA, f"{motivo}: " + ", ".join(f"{k}={v['depois']}" for k, v in changes.items()),
+                        ator=f"persona:{persona}", dados=changes)
+    if llm.embedding_model(before) != llm.embedding_model(after):
         # vectors of different models are not comparable: re-embed everything
         await indexer.mark_all(store)
-    return {"valores": after, "padroes": DEFAULT_SETTINGS}
+    if changes:
+        await agent.check_health(store, after)
+    return after
+
+
+@app.put("/api/settings")
+async def put_settings(patch: dict = Body(...), x_persona: str = Header("OPERADOR")) -> dict:
+    return {"valores": await apply_settings(patch, x_persona), "padroes": DEFAULT_SETTINGS}
+
+
+# ---------------------------------------------------------------- setup
+SETUP_KEY = f"{P}:setup"
+
+
+def _redis_label() -> str:
+    # never show a password that may be part of the URL
+    url = REDIS_URL
+    if "@" in url:
+        scheme, rest = url.split("://", 1)
+        url = f"{scheme}://***@{rest.split('@', 1)[1]}"
+    return url
+
+
+@app.get("/api/setup")
+async def get_setup() -> dict:
+    info = await store.r.info("server")
+    return {
+        "estado": await store.get_json(SETUP_KEY) or {"concluido": False},
+        "provedores": llm.PROVIDERS, "provedores_embedding": llm.EMBEDDING_PROVIDERS, "chaves": apikeys.status(),
+        "valores": await store.settings(), "padroes": DEFAULT_SETTINGS,
+        "ambiente": {"redis": _redis_label(), "redis_versao": info.get("redis_version"),
+                     "colaboradores": await store.r.scard(f"{P}:employees"), "casos": await store.r.zcard(f"{P}:cases")},
+    }
+
+
+@app.post("/api/setup/test")
+async def setup_test(body: dict = Body(...)) -> dict:
+    """Tests a provider with the values typed in the wizard, before anything is saved."""
+    prov = str(body.get("provedor") or "")
+    if prov not in llm.PROVIDERS:
+        raise HTTPException(400, f"provedor desconhecido: {prov}")
+    settings = {**await store.settings(), **{k: v for k, v in (body.get("valores") or {}).items() if k in DEFAULT_SETTINGS}}
+    base_url = settings["ollama_base_url"] if prov == "ollama" else (settings["openai_base_url"] if prov == "openai" else None)
+    model = str(body.get("modelo") or llm.active_model(settings, prov))
+    return await llm.test_connection(settings, prov, model, api_key=(body.get("chave") or None), base_url=base_url)
+
+
+@app.put("/api/setup/key")
+async def setup_key(body: dict = Body(...), x_persona: str = Header("OPERADOR")) -> dict:
+    prov = str(body.get("provedor") or "")
+    try:
+        apikeys.set_key(prov, body.get("chave"))
+    except ValueError as exc:
+        raise http_error(exc) from exc
+    what = "configurada" if body.get("chave") else "removida"
+    await log.write(store, log.CONFIG_ALTERADA, f"Chave de API de {llm.PROVIDERS[prov]['nome']} {what} pelo assistente (o valor não é registrado).",
+                    ator=f"persona:{x_persona}", dados={"provedor": prov, "acao": what})
+    await agent.check_health(store, await store.settings())
+    return apikeys.status()
+
+
+@app.post("/api/setup/complete")
+async def setup_complete(body: dict = Body(default={}), x_persona: str = Header("OPERADOR")) -> dict:
+    after = await apply_settings(body.get("valores") or {}, x_persona, "Configuração inicial concluída")
+    state = {"concluido": True, "concluido_em": now_ms(), "persona": x_persona, "pulado": bool(body.get("pulado"))}
+    await store.set_json(SETUP_KEY, state)
+    return {"estado": state, "valores": after}
 
 
 @app.get("/api/agent/health")
@@ -795,7 +861,7 @@ async def semantic_search(body: dict = Body(...)) -> dict:
     try:
         return await emb.search(store, texto, k=int(body.get("k", 10)), filtros=body.get("filtros") or {})
     except agent.AgentUnavailable as exc:
-        raise HTTPException(503, f"Ollama indisponível para gerar o embedding da busca ({exc}). "
+        raise HTTPException(503, f"Provedor de embeddings indisponível para a busca ({exc}). "
                                  "Ative o modo simulado nas configurações para buscar sem IA.") from exc
 
 
@@ -807,7 +873,7 @@ async def ask_question(body: dict = Body(...), x_persona: str = Header("OPERADOR
     try:
         return await ask.answer(store, pergunta, await load_facts(), await repo.event_types(), persona=x_persona)
     except agent.AgentUnavailable as exc:
-        raise HTTPException(503, f"Ollama indisponível ({exc}). Ative o modo simulado nas configurações para responder sem IA.") from exc
+        raise HTTPException(503, f"IA indisponível ({exc}). Ative o modo simulado nas configurações para responder sem IA.") from exc
 
 
 @app.get("/api/ask/history")

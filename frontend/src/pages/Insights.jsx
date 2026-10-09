@@ -221,7 +221,7 @@ export default function Insights() {
           ) : <Empty>Nenhuma auditoria ainda.</Empty>}
           <h3 className="mt">Embeddings dos eventos</h3>
           <div className="row small">
-            <Badge tone={idx.estado === 'EM_DIA' ? 'ok' : idx.estado === 'AGUARDANDO_OLLAMA' || idx.estado === 'ERRO' ? 'bad' : 'info'}>{idx.estado || 'sem indexador'}</Badge>
+            <Badge tone={idx.estado === 'EM_DIA' ? 'ok' : idx.estado === 'AGUARDANDO_IA' || idx.estado === 'ERRO' ? 'bad' : 'info'}>{idx.estado || 'sem indexador'}</Badge>
             <span>{idx.documentos || 0} documentos indexados, {idx.pendentes || 0} na fila{idx.simulados ? `, ${idx.simulados} com embedding simulado` : ''}.</span>
             <button className="btn sm right" onClick={() => go('perguntar')}>Perguntar aos eventos</button>
           </div>

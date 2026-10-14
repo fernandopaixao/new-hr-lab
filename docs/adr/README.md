@@ -27,3 +27,4 @@ Cada registro segue o mesmo formato: contexto, decisão, alternativas considerad
 | [0021](0021-provedores-de-llm-na-nuvem.md) | Provedores de LLM na nuvem (Claude, OpenAI e compatíveis, Gemini) ao lado do Ollama | pedida pelo usuário |
 | [0022](0022-assistente-de-configuracao-inicial.md) | Assistente de configuração inicial na interface | pedida pelo usuário |
 | [0023](0023-eventos-com-vigencia.md) | Eventos com vigência (programa de alto potencial), agenda derivada e relógio simulado | pedida pelo usuário |
+| [0024](0024-motor-jev-e-painel-de-desempenho.md) | Motor JEV (modelo de decisão tev1:0.8b) ao lado do Qwen e painel de desempenho dos agentes | pedida pelo usuário |

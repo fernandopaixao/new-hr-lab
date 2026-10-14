@@ -10,6 +10,7 @@ A estratégia está registrada na [ADR 0015](adr/0015-estrategia-de-visibilidade
 | Rastro do caso | Por que este caso terminou assim? | Detalhe do caso |
 | Log de decisões | Quem decidiu o quê, quando e com qual explicação? | Tela Log, `GET /api/logs`, `audit-log.jsonl` |
 | Painel | Como a operação está indo? Onde está o gargalo? | Tela Visão, `GET /api/insights` |
+| Desempenho dos agentes | Qual motor (Qwen ou JEV) responde mais rápido e concorda mais? | Tela Desempenho, `GET /api/metrics/agentes` |
 | Métricas | Como acompanhar fora do laboratório? | `GET /api/metrics` (Prometheus) |
 | Perguntas | Qualquer pergunta que as telas não respondem diretamente | Tela Perguntar, `POST /api/ask` |
 
@@ -64,6 +65,8 @@ Todas as camadas são alimentadas pelos mesmos dados: o documento do caso e o lo
 | `hrlab_stage_duration_ms` | `estagio`, `quantile` (0.5, 0.95), com `_count` |
 | `hrlab_approvals_pending` | - |
 | `hrlab_agent_up` | - |
+| `hrlab_agent_processing_ms`, `hrlab_agent_response_ms` | `motor`, `quantile` (últimas 24 horas) |
+| `hrlab_agent_calls`, `hrlab_agent_errors` | `motor` |
 | `hrlab_index_documents`, `hrlab_index_dirty`, `hrlab_index_simulated` | - |
 
 Para coletar, aponte um Prometheus para `http://localhost:8580/api/metrics`.

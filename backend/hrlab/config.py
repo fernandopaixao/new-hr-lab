@@ -38,6 +38,17 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "cloud_max_tokens": int(os.getenv("CLOUD_MAX_TOKENS", "16000")),
     "cloud_max_concurrency": int(os.getenv("CLOUD_MAX_CONCURRENCY", "4")),
     "agent_cache_enabled": _bool("AGENT_CACHE_ENABLED", True),
+    # Engine of the eligibility and audit agents (see engines.py): qwen (generative model of the
+    # provider above, qwen2.5:7b by default) or jev (JEV-style decision model served by Ollama).
+    "agent_engine": os.getenv("AGENT_ENGINE", "qwen"),
+    "jev_model": os.getenv("JEV_MODEL", "tev1:0.8b"),
+    "jev_base_url": os.getenv("JEV_BASE_URL", ""),  # empty: the same Ollama as ollama_base_url
+    "jev_timeout_s": int(os.getenv("JEV_TIMEOUT_S", "30")),
+    "jev_max_concurrency": int(os.getenv("JEV_MAX_CONCURRENCY", "2")),
+    # The agent also classifies eligibility (advisory: the rules still decide).
+    "agent_eligibility_enabled": _bool("AGENT_ELIGIBILITY_ENABLED", True),
+    # The other engine answers the same task right after, for comparison only (never decides).
+    "agent_compare_enabled": _bool("AGENT_COMPARE_ENABLED", False),
     # When Ollama is unreachable the flow parks and waits, unless this is enabled.
     "heuristic_fallback_enabled": _bool("HEURISTIC_FALLBACK_ENABLED", False),
     # SEMPRE: every plan and audit needs a human decision.
@@ -60,6 +71,7 @@ SETTING_TYPES = {k: type(v) for k, v in DEFAULT_SETTINGS.items()}
 HUMAN_REVIEW_MODES = ("SEMPRE", "SE_REPROVADO")
 CHOICES = {
     "llm_provider": ("ollama", "anthropic", "openai", "gemini"),
+    "agent_engine": ("qwen", "jev"),
     "embedding_provider": ("ollama", "openai", "gemini", "simulado"),
     "anthropic_effort": ("", "low", "medium", "high", "xhigh", "max"),
 }

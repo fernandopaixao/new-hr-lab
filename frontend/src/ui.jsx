@@ -137,20 +137,33 @@ export function RulesTable({ rules, onlyFailed = false }) {
   )
 }
 
+const ENGINE_NAMES = { qwen: 'Qwen', jev: 'JEV', heuristico: 'simulado' }
+const VERDICT_TONE = { APROVADO: 'APROVADO', ELEGIVEL: 'APROVADO', REPROVADO: 'REPROVADO', NAO_ELEGIVEL: 'REPROVADO', EXCECAO_NECESSARIA: 'EXCECAO' }
+
 export function AgentCard({ review, title }) {
   if (!review) return <Empty>O agente ainda não avaliou.</Empty>
+  const verdict = review.veredito || review.recomendacao || review.classificacao
+  const tone = VERDICT_TONE[verdict] || ''
+  const comp = review.comparacao
   return (
-    <div className={`agent-card ${review.recomendacao}`}>
+    <div className={`agent-card ${tone}`}>
       <div className="row">
         <div>
           <h4>{title}</h4>
-          <div className={`rec ${review.recomendacao}`}>Recomendação: {review.recomendacao}</div>
+          <div className={`rec ${tone}`}>{review.classificacao ? 'Classificação' : 'Recomendação'}: {verdict}</div>
         </div>
         <div className="right small muted" style={{ textAlign: 'right' }}>
-          <div>{review.agente === 'heuristico' ? <Badge tone="warn">agente simulado (heurístico)</Badge> : <Badge tone="info">{review.modelo}</Badge>}</div>
-          <div>confiança {Math.round((review.confianca || 0) * 100)}% · {dur(review.duracao_ms)}{review.cache ? ' · cache' : ''}{review.tokens_por_segundo ? ` · ${review.tokens_por_segundo} tok/s` : ''}</div>
+          <div>{review.agente === 'heuristico' ? <Badge tone="warn">agente simulado (heurístico)</Badge>
+            : <>{review.motor ? <Badge tone="violet">motor {ENGINE_NAMES[review.motor] || review.motor}</Badge> : null} <Badge tone="info">{review.modelo}</Badge></>}</div>
+          <div>confiança {Math.round((review.confianca || 0) * 100)}% · {dur(review.processamento_ms ?? review.duracao_ms)}{review.resposta_ms != null && !review.cache ? ` (modelo ${dur(review.resposta_ms)})` : ''}{review.cache ? ' · cache' : ''}{review.tokens_por_segundo ? ` · ${review.tokens_por_segundo} tok/s` : ''}</div>
         </div>
       </div>
+      {comp ? (
+        <div className={`callout small ${comp.erro ? 'warn' : comp.concorda ? 'ok' : 'warn'}`}>
+          <b>Comparação com {ENGINE_NAMES[comp.motor] || comp.motor}</b> (não decide): {comp.erro ? `falhou: ${comp.erro}`
+            : <>{comp.veredito}, confiança {Math.round((comp.confianca || 0) * 100)}%, {dur(comp.processamento_ms)}{comp.cache ? ' (cache)' : ''}. {comp.concorda ? 'Os dois motores concordam.' : 'Os motores divergem.'}</>}
+        </div>
+      ) : null}
       <p>{review.resumo}</p>
       {review.achados?.length ? (
         <table className="tbl">

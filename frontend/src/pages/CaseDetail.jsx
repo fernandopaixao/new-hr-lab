@@ -222,6 +222,11 @@ export default function CaseDetail({ id, onClose }) {
                 <Status value={c.elegibilidade.decisao} /> {c.elegibilidade.explicacao}
               </div>
               <RulesTable rules={c.elegibilidade.regras} />
+              {c.agente_elegibilidade ? <>
+                {c.agente_elegibilidade.concorda_com_regras === false
+                  ? <div className="callout warn small">O agente classificou diferente das regras. A decisão é das regras; a divergência fica registrada no log e no painel de desempenho.</div> : null}
+                <AgentCard review={c.agente_elegibilidade} title="Agente: classificação de elegibilidade" />
+              </> : null}
             </div>
           ) : <Empty>Ainda não avaliado.</Empty>)}
 

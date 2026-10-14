@@ -63,6 +63,10 @@ docker compose up -d --build
 
 Escolha no assistente (ou em Configurações) entre Anthropic Claude, OpenAI ou compatível (Azure OpenAI, OpenRouter, Groq, vLLM, trocando a URL base) e Google Gemini. A chave digitada no assistente fica num arquivo do volume de dados, nunca no Redis nem no log; uma chave em `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` ou `GEMINI_API_KEY` no `.env` tem prioridade. Com um provedor na nuvem, os dados dos casos (fictícios) vão para a API do provedor, que cobra por uso. Veja [docs/agentes.md](docs/agentes.md#provedores).
 
+### Motor JEV
+
+Além do agente generativo (Qwen), a elegibilidade e as auditorias podem usar um modelo de decisão no estilo JEV, servido pelo Ollama 0.35 ou mais novo: `ollama pull tev1:0.8b` e escolha "JEV" em Configurações ou no assistente. Ligue "Comparar os dois motores" para medir Qwen e JEV nos mesmos casos na tela Desempenho. Veja [docs/agentes.md](docs/agentes.md#motores-qwen-e-jev).
+
 Se a IA estiver fora do ar, os casos param em "Aguardando agente de IA" e são retomados sozinhos quando ela volta. Para demonstrações sem IA, ligue o agente heurístico simulado em Configurações ou use `HEURISTIC_FALLBACK_ENABLED=true`. Toda decisão desse agente fica marcada como simulada.
 
 ### Estresse
@@ -79,6 +83,7 @@ Na tela Cenários, a aba "Rajada de eventos" dispara dezenas de eventos aleatór
 | --- | --- |
 | Linha | Linha de produção ao vivo, com uma estação por estágio. Permite pausar a linha ou uma estação, "parar antes" de um estágio e clicar em um caso para depurar. |
 | Detalhe do caso | Evento, regras avaliadas, plano com operações escolhidas e descartadas, parecer do agente com prompt e resposta bruta, recibos da execução, compensações, auditoria, estado antes e depois e trilha completa. Permite avançar passo a passo, reprocessar a partir de um estágio, editar o evento e cancelar. |
+| Desempenho | Tempo de resposta e de processamento dos agentes por motor (Qwen e JEV), histórico, tempo por tarefa e concordância entre os motores nos mesmos casos. |
 | Visão | Painel de visibilidade: KPIs, alertas, linha do tempo, funil, tempo por estágio, evento por situação, regras que mais barram, operações, aprovações, agente e índice. |
 | Perguntar | Perguntas em linguagem natural sobre todos os eventos, busca semântica e histórico. Cada resposta mostra a interpretação, os números exatos e as fontes. |
 | Cenários | 54 cenários reais, de exceção, de bloqueio, coletivos e de estresse, cada um com o resultado esperado. Também traz a suíte completa com comparação entre esperado e obtido, evento manual e rajada. |
@@ -88,7 +93,7 @@ Na tela Cenários, a aba "Rajada de eventos" dispara dezenas de eventos aleatór
 | Contratos | Editor estruturado e YAML para incluir ou remover regras e operações, mudar vigências e salvar como nova versão. |
 | Prateleira | Catálogo de operações, com execução avulsa ou simulada. |
 | Log | Todas as decisões e alterações, com filtro e exportação em JSONL. |
-| Configurações | Provedor de IA e assistente de configuração, parâmetros do Ollama e da nuvem, gerador de embeddings e modelo de perguntas, modo de revisão humana, atraso visual, injeção de falhas e reinício do laboratório. |
+| Configurações | Motor dos agentes (Qwen ou JEV) e comparação entre eles, provedor de IA e assistente de configuração, parâmetros do Ollama e da nuvem, gerador de embeddings e modelo de perguntas, modo de revisão humana, atraso visual, injeção de falhas e reinício do laboratório. |
 
 ## Desenvolvimento local
 

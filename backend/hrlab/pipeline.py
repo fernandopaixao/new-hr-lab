@@ -296,6 +296,19 @@ class Pipeline:
                                 colaborador_id=case.get("colaborador_id"), estagio="eligibility", dados=r)
         await log.write(self.store, log.ELEGIBILIDADE, el["explicacao"], case_id=case["id"], colaborador_id=case.get("colaborador_id"),
                         estagio="eligibility", dados={"decisao": el["decisao"], "resumo": el["resumo"], "regras": el["regras"]})
+        settings = await self.store.settings()
+        if settings.get("agent_eligibility_enabled"):
+            # the agent classifies too; the rules keep the decision and any disagreement stays visible
+            review = await agent.review(self.store, "ELEGIBILIDADE", case, processo, ctx.cargo(alvo), subject=emp)
+            review["concorda_com_regras"] = review.get("veredito") == el["decisao"]
+            case = await self.store.get_case(case["id"])
+            case["agente_elegibilidade"] = review
+            await self.store.save_case(case)
+            texto = (f"Agente ({review.get('motor')}, {review.get('modelo')}) classifica {review.get('veredito')}: {review.get('resumo')}"
+                     + ("" if review["concorda_com_regras"] else f" Diverge das regras ({el['decisao']}); a decisão é das regras."))
+            await log.write(self.store, log.AGENTE, texto, ator=f"agente:{review.get('modelo')}", case_id=case["id"],
+                            colaborador_id=case.get("colaborador_id"), estagio="eligibility",
+                            dados={k: v for k, v in review.items() if k not in ("prompt", "resposta_bruta")})
         if el["decisao"] == "NAO_ELEGIVEL":
             return StageResult("final", NAO_ELEGIVEL, el["explicacao"])
         if el["decisao"] == "EXCECAO_NECESSARIA":
@@ -349,7 +362,7 @@ class Pipeline:
         case["agente_auditoria"] = review
         case["recomendacao_auditoria"] = review["recomendacao"]
         await self.store.save_case(case)
-        await log.write(self.store, log.AGENTE, f"Agente ({review.get('agente')}) recomenda {review['recomendacao']} o plano: {review.get('resumo')}",
+        await log.write(self.store, log.AGENTE, f"Agente ({review.get('motor')}, {review.get('modelo')}) recomenda {review['recomendacao']} o plano: {review.get('resumo')}",
                         ator=f"agente:{review.get('modelo')}", case_id=case["id"], colaborador_id=case.get("colaborador_id"), estagio="audit",
                         dados={k: v for k, v in review.items() if k != "prompt"})
         await log.write(self.store, log.AUDITORIA, f"Auditoria antes da execução: {result['decisao']}.", case_id=case["id"],
@@ -503,7 +516,7 @@ class Pipeline:
         case["agente_conferencia"] = review
         case["recomendacao_conferencia"] = review["recomendacao"]
         await self.store.save_case(case)
-        await log.write(self.store, log.AGENTE, f"Agente ({review.get('agente')}) recomenda {review['recomendacao']} a execução: {review.get('resumo')}",
+        await log.write(self.store, log.AGENTE, f"Agente ({review.get('motor')}, {review.get('modelo')}) recomenda {review['recomendacao']} a execução: {review.get('resumo')}",
                         ator=f"agente:{review.get('modelo')}", case_id=case["id"], colaborador_id=case.get("colaborador_id"), estagio="verification",
                         dados={k: v for k, v in review.items() if k != "prompt"})
         await log.write(self.store, log.AUDITORIA, f"Conferência final: {result['decisao']}.", case_id=case["id"],

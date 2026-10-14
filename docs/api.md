@@ -101,9 +101,12 @@ Veja a [ADR 0023](adr/0023-eventos-com-vigencia.md).
 | --- | --- | --- |
 | `GET /api/settings`, `PUT /api/settings` | campos a alterar | Configurações em tempo de execução (veja [operação](operacao.md#configurações)). |
 | `GET /api/agent/health`, `POST /api/agent/check` | - | Saúde do provedor de IA, do modelo e do gerador de embeddings. |
-| `POST /api/agent/pull` | `{modelo}` | Baixa um modelo no Ollama (padrão: o do conferente). |
+| `POST /api/agent/pull` | `{modelo, motor?}` | Baixa um modelo no Ollama (padrão: o do conferente). Com `motor: "jev"`, baixa o modelo JEV no Ollama do JEV. |
+| `GET /api/metrics/agentes` | `?periodo_horas=24&balde_min=0` | Desempenho dos agentes por motor e tarefa: médias e percentis de resposta e processamento, histórico, concordância com as regras e entre Qwen e JEV, últimas chamadas. `periodo_horas=0` lê todo o histórico; `balde_min=0` escolhe o intervalo sozinho. |
+| `DELETE /api/metrics/agentes` | - | Apaga o histórico de desempenho (registrado no log). |
 | `POST /api/agent/cache/clear` | - | Limpa o cache de respostas. |
 | `GET /api/setup` | - | Estado do assistente de configuração, provedores, situação das chaves (sem o valor), configurações e ambiente. |
+| `POST /api/setup/test-jev` | `{modelo?, valores?}` | Testa o modelo JEV sem salvar: confere se está instalado e faz uma decisão mínima em `/v1/systemone`. |
 | `POST /api/setup/test` | `{provedor, modelo, chave?, valores?}` | Testa um provedor com os valores digitados, sem salvar nada: lista os modelos e faz uma chamada mínima. Devolve `ok`, `etapa` e `erro`. |
 | `PUT /api/setup/key` | `{provedor, chave}` | Salva a chave de API do provedor (chave vazia remove). Devolve só a situação das chaves. |
 | `POST /api/setup/complete` | `{valores}` ou `{pulado: true}` | Grava as configurações (com log) e marca o assistente como concluído. |

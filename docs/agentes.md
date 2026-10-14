@@ -4,7 +4,7 @@ O laboratório usa modelos de linguagem em três papéis. O padrão é um modelo
 
 | Papel | Modelo padrão | Código | Onde aparece |
 | --- | --- | --- | --- |
-| Agente de conferência | `qwen2.5:7b` (`OLLAMA_MODEL`) ou o modelo do provedor escolhido | `agent.py`, `llm.py` | Auditoria (antes da execução) e conferência final |
+| Agente de conferência | motor Qwen: `qwen2.5:7b` (`OLLAMA_MODEL`) ou o modelo do provedor escolhido; motor JEV: `tev1:0.8b` (`JEV_MODEL`) | `agent.py`, `engines.py`, `llm.py` | Classificação de elegibilidade, auditoria (antes da execução) e conferência final |
 | Embeddings | `nomic-embed-text` (`EMBEDDING_MODEL`), ou OpenAI, Gemini ou simulado | `embeddings.py`, `indexer.py`, `llm.py` | Índice de todos os eventos, busca semântica |
 | Agente de perguntas | o mesmo do conferente, ou `ask_model` | `ask.py` | Tela Perguntar |
 
@@ -25,10 +25,40 @@ O provedor dos agentes (`llm_provider`) e o gerador de embeddings (`embedding_pr
 - **Erros.** Chave recusada, modelo inexistente, cota estourada ou falta de rede contam como IA indisponível: o caso aguarda, como com o Ollama fora do ar.
 - **Custo e privacidade.** Com um provedor na nuvem, os dados dos casos (fictícios neste laboratório) vão para a API do provedor, que cobra por uso. O cache de respostas evita chamadas repetidas.
 
+## Motores: Qwen e JEV
+
+O agente de conferência tem dois motores, escolhidos em `agent_engine` (Configurações ou assistente, passo "Motor de decisão"). Veja a [ADR 0024](adr/0024-motor-jev-e-painel-de-desempenho.md).
+
+| | Qwen (generativo) | JEV (modelo de decisão) |
+| --- | --- | --- |
+| Modelo padrão | `qwen2.5:7b` no provedor configurado | `tev1:0.8b` no Ollama 0.35+ |
+| Chamada | chat com JSON Schema (`llm.chat_json`) | `POST /v1/systemone` com `state` e `questions` (`llm.decide`) |
+| Entrada | o caso inteiro em JSON | poucos textos curtos por tarefa (`engines.build_state`) |
+| Saída | veredito, confiança, resumo, achados e justificativa escritos pelo modelo | probabilidades: veredito (`choice`), verificações (`noul`) e risco (`score`); resumo e justificativa montados a partir delas (`engines.interpret`) |
+| Achados | livres | verificações fixas; probabilidade de 50% ou mais vira achado |
+
+- `jev_base_url` vazio usa o mesmo Ollama de `ollama_base_url`. Baixe o modelo com `ollama pull tev1:0.8b` ou com o botão "Baixar modelo JEV". Outras tags: `tev1` (4B) e `nimble` (9B).
+- **Comparação** (`agent_compare_enabled`, padrão desligado): o outro motor responde a mesma tarefa logo depois, sem decidir. O caso mostra "Comparação com ... (não decide)" e o painel Desempenho mede a concordância entre os dois. Falha do motor de comparação nunca para o caso.
+- **Classificação de elegibilidade** (`agent_eligibility_enabled`, padrão ligado): o agente classifica `ELEGIVEL`, `EXCECAO_NECESSARIA` ou `NAO_ELEGIVEL` depois das regras. É consultiva: a decisão é das regras, e a divergência fica no log e no caso.
+- Com o JEV ativo, o indicador "IA ok" e a retomada dos casos em espera seguem o modelo de decisão. O agente de perguntas e os embeddings continuam no provedor generativo.
+
+## Desempenho dos agentes
+
+Cada chamada de agente, dos dois motores, grava um registro em `hr:metrics:agent` (`metrics.py`), que sobrevive à limpeza do laboratório. A tela **Desempenho** e `GET /api/metrics/agentes?periodo_horas=24&balde_min=0` mostram:
+
+- por motor: chamadas, processamento e resposta do modelo (média, p50, p95, mín., máx.), espera por vaga, tokens, confiança, erros e concordância com as regras;
+- o histórico por intervalo (automático ou escolhido), em gráfico;
+- o tempo por tarefa (elegibilidade, auditoria, conferência);
+- Qwen x JEV nos mesmos casos: concordância por tarefa, quem foi mais rigoroso e as divergências recentes;
+- as últimas chamadas.
+
+Tempos: **resposta** é só a chamada ao modelo; **espera** é a fila do semáforo de concorrência; **processamento** é a tarefa inteira (contexto, espera, novas tentativas e leitura). Cache, agente simulado e erros não entram nas médias. Para comparar latência real, desligue o cache e ligue a comparação. `DELETE /api/metrics/agentes` (botão "Limpar histórico") apaga o histórico.
+
 ## Agente de conferência
 
 ### Quando é chamado
 
+- **Classificação de elegibilidade**, depois das regras de elegibilidade, quando `agent_eligibility_enabled` está ligado (tipo `ELEGIBILIDADE`, consultiva).
 - **Auditoria**, antes da execução, depois que as regras do plano, as verificações do contrato de serviço, o compliance e o estado alvo foram avaliados sobre o estado projetado (tipo `AUDITORIA`).
 - **Conferência final**, depois da execução, depois que os recibos e o estado final foram comparados com o que foi auditado (tipo `CONFERENCIA`).
 
@@ -80,7 +110,7 @@ Na revisão humana, a pessoa vê a recomendação do agente ao lado das regras e
 
 ### Cache, concorrência e desempenho
 
-- Respostas são guardadas por 24 horas, com chave no hash do provedor, do modelo e do prompt. Cenários repetidos não chamam o modelo de novo. Desligue em Configurações para medir latência real.
+- Respostas são guardadas por 24 horas, com chave no hash do motor, do provedor, do modelo, da tarefa e do prompt. Cenários repetidos não chamam o modelo de novo. Desligue em Configurações para medir latência real.
 - Um semáforo limita as chamadas simultâneas: `ollama_max_concurrency` (padrão 1; com GPU e `OLLAMA_NUM_PARALLEL` no servidor, aumente) e `cloud_max_concurrency` (padrão 4) para os provedores na nuvem.
 - `ollama_keep_alive` mantém o modelo carregado; o worker faz um aquecimento quando o Ollama fica saudável.
 - `ollama_num_ctx` (8192) e `ollama_num_predict` (900) cobrem os prompts maiores (desligamento de executivo). Temperatura 0 torna a resposta estável.

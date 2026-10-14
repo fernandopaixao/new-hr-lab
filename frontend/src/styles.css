@@ -17,6 +17,8 @@
   --info-soft: #e5f0fb;
   --violet: #6d4fc2;
   --violet-soft: #efeafc;
+  --qwen: #2f5bea;
+  --jev: #d9730d;
   --gray-soft: #eef0f3;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
   --radius: 8px;
@@ -43,6 +45,8 @@
     --info-soft: #14243a;
     --violet: #a58cf0;
     --violet-soft: #221b3a;
+    --qwen: #6b8cff;
+    --jev: #f0a35e;
     --gray-soft: #222a38;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   }
@@ -363,3 +367,8 @@ details > summary { cursor: pointer; color: var(--accent); }
 .program.active b { color: var(--accent); }
 .program-bar { height: 6px; border-radius: 3px; background: var(--panel-2); margin-top: 8px; overflow: hidden; }
 .program-bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.agent-card.EXCECAO { border-left: 4px solid var(--warn); }
+.rec.EXCECAO { color: var(--warn); }
+.engine-kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+.engine-kpis .v { font-size: 20px; font-weight: 700; }
+.engine-kpis .l { color: var(--muted); font-size: 12px; }

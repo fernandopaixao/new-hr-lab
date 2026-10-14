@@ -13,7 +13,7 @@ from fastapi import Body, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, StreamingResponse
 
-from . import agent, apikeys, ask, clock, embeddings as emb, engine, facts as factsmod, indexer, llm, logbook as log, migrations, shelf, vigencia
+from . import agent, apikeys, ask, clock, embeddings as emb, engine, facts as factsmod, indexer, llm, logbook as log, metrics as agent_metrics, migrations, shelf, vigencia
 from .config import DEFAULT_SETTINGS, REDIS_URL
 from .context import Ctx
 from .contracts import ContractError, ContractRepo, from_yaml, to_yaml, validate
@@ -176,7 +176,7 @@ async def get_setup() -> dict:
     info = await store.r.info("server")
     return {
         "estado": await store.get_json(SETUP_KEY) or {"concluido": False},
-        "provedores": llm.PROVIDERS, "provedores_embedding": llm.EMBEDDING_PROVIDERS, "chaves": apikeys.status(),
+        "provedores": llm.PROVIDERS, "provedores_embedding": llm.EMBEDDING_PROVIDERS, "chaves": apikeys.status(), "motores": ENGINES,
         "valores": await store.settings(), "padroes": DEFAULT_SETTINGS,
         "ambiente": {"redis": _redis_label(), "redis_versao": info.get("redis_version"),
                      "colaboradores": await store.r.scard(f"{P}:employees"), "casos": await store.r.zcard(f"{P}:cases")},
@@ -193,6 +193,13 @@ async def setup_test(body: dict = Body(...)) -> dict:
     base_url = settings["ollama_base_url"] if prov == "ollama" else (settings["openai_base_url"] if prov == "openai" else None)
     model = str(body.get("modelo") or llm.active_model(settings, prov))
     return await llm.test_connection(settings, prov, model, api_key=(body.get("chave") or None), base_url=base_url)
+
+
+@app.post("/api/setup/test-jev")
+async def setup_test_jev(body: dict = Body(default={})) -> dict:
+    """Tests the JEV decision model with the values typed in the wizard, before anything is saved."""
+    settings = {**await store.settings(), **{k: v for k, v in (body.get("valores") or {}).items() if k in DEFAULT_SETTINGS}}
+    return await llm.test_jev(settings, body.get("modelo") or None)
 
 
 @app.put("/api/setup/key")
@@ -229,8 +236,11 @@ async def agent_check() -> dict:
 
 @app.post("/api/agent/pull")
 async def agent_pull(body: dict = Body(default={})) -> dict:
+    settings = await store.settings()
     try:
-        return await agent.pull_model(await store.settings(), body.get("modelo"))
+        if body.get("motor") == "jev":
+            return await agent.pull_model(settings, body.get("modelo") or settings["jev_model"], llm.jev_base_url(settings))
+        return await agent.pull_model(settings, body.get("modelo"))
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, f"falha ao baixar o modelo: {exc}") from exc
 
@@ -241,6 +251,36 @@ async def agent_cache_clear() -> dict:
     async for key in store.r.scan_iter(match=f"{P}:agent:cache:*", count=500):
         await store.r.delete(key)
         n += 1
+    return {"removidos": n}
+
+
+# ------------------------------------------------- agent performance (Qwen x JEV)
+ENGINES = {
+    "qwen": {"nome": "Qwen (generativo)", "descricao": "Modelo generativo do provedor configurado (qwen2.5:7b no Ollama por padrão). "
+             "Lê o caso inteiro em JSON e escreve resumo, achados e justificativa."},
+    "jev": {"nome": "JEV (modelo de decisão)", "descricao": "Modelo de decisão no estilo JEV servido pelo Ollama 0.35+ (tev1:0.8b por padrão). "
+            "Responde perguntas tipadas com probabilidades, numa só chamada, sem texto livre."},
+}
+
+
+@app.get("/api/metrics/agentes")
+async def agent_performance(periodo_horas: float = 24, balde_min: int = 0, ate: int | None = None) -> dict:
+    """History of agent response and processing times, per engine and task, with Qwen x JEV comparison."""
+    fim = ate or now_ms()
+    desde = int(fim - periodo_horas * 3_600_000) if periodo_horas else 0
+    recs = await agent_metrics.load(store, desde, fim)
+    out = agent_metrics.summarize(recs, desde_ms=desde, ate_ms=fim, bucket_ms=balde_min * 60_000 if balde_min else None)
+    settings = await store.settings()
+    out["config"] = {"motor": settings["agent_engine"], "comparacao": settings["agent_compare_enabled"],
+                     "elegibilidade": settings["agent_eligibility_enabled"], "modelo_qwen": llm.active_model(settings),
+                     "provedor_qwen": llm.PROVIDERS[llm.provider(settings)]["nome"], "modelo_jev": settings["jev_model"]}
+    return out
+
+
+@app.delete("/api/metrics/agentes")
+async def agent_performance_clear(x_persona: str = Header("OPERADOR")) -> dict:
+    n = await agent_metrics.clear(store)
+    await log.write(store, log.CONTROLE, f"Histórico de desempenho dos agentes limpo ({n} registros).", ator=f"persona:{x_persona}")
     return {"removidos": n}
 
 
@@ -893,6 +933,17 @@ async def metrics() -> str:
             if v is not None:
                 lines.append(f'hrlab_stage_duration_ms{{estagio="{s}",quantile="{qn / 100}"}} {v}')
         lines.append(f'hrlab_stage_duration_ms_count{{estagio="{s}"}} {len(vals)}')
+    perf = agent_metrics.summarize(await agent_metrics.load(store, now_ms() - 86_400_000), desde_ms=now_ms() - 86_400_000, ate_ms=now_ms())
+    lines += ["# HELP hrlab_agent_processing_ms Tempo de processamento dos agentes nas últimas 24 horas",
+              "# TYPE hrlab_agent_processing_ms summary"]
+    for motor, row in perf["por_motor"].items():
+        for qn in ("p50", "p95"):
+            if row["processamento_ms"][qn] is not None:
+                lines.append(f'hrlab_agent_processing_ms{{motor="{motor}",quantile="0.{qn[1:]}"}} {row["processamento_ms"][qn]}')
+            if row["resposta_ms"][qn] is not None:
+                lines.append(f'hrlab_agent_response_ms{{motor="{motor}",quantile="0.{qn[1:]}"}} {row["resposta_ms"][qn]}')
+        lines.append(f'hrlab_agent_calls{{motor="{motor}"}} {row["chamadas"]}')
+        lines.append(f'hrlab_agent_errors{{motor="{motor}"}} {row["erros"]}')
     health = await store.get_json(f"{P}:agent:health") or {}
     st = await emb.status(store)
     lines += [

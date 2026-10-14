@@ -87,7 +87,7 @@ services:
       - ollama
     environment:
       OLLAMA_HOST: http://ollama:11434
-    entrypoint: ["/bin/sh", "-c", "sleep 5 && ollama pull ${OLLAMA_MODEL:-qwen2.5:7b} && ollama pull ${EMBEDDING_MODEL:-nomic-embed-text}"]
+    entrypoint: ["/bin/sh", "-c", "sleep 5 && ollama pull ${OLLAMA_MODEL:-qwen2.5:7b} && ollama pull ${EMBEDDING_MODEL:-nomic-embed-text} && (ollama pull ${JEV_MODEL:-tev1:0.8b} || echo 'modelo JEV indisponivel nesta versao do Ollama')"]
     restart: "no"
 
 volumes:

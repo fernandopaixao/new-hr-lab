@@ -6,6 +6,7 @@ const STEPS = [
   ['inicio', 'Início'],
   ['ia', 'IA dos agentes'],
   ['conexao', 'Conexão'],
+  ['motor', 'Motor de decisão'],
   ['embeddings', 'Busca semântica'],
   ['linha', 'Linha'],
   ['revisao', 'Revisão'],
@@ -44,6 +45,7 @@ export default function Setup({ onDone, onCancel }) {
   const [test, setTest] = useState(null)
   const [models, setModels] = useState([])
   const [busy, setBusy] = useState('')
+  const [jevTest, setJevTest] = useState(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -87,6 +89,20 @@ export default function Setup({ onDone, onCancel }) {
     } catch (e) { setTest({ ok: false, etapa: 'modelo', erro: `falha ao baixar ${modelo}: ${e.message}` }) } finally { setBusy('') }
   }
 
+  const runJevTest = async () => {
+    setBusy('jev'); setJevTest(null)
+    try { setJevTest(await api.post('/setup/test-jev', { modelo: vals.jev_model, valores: vals })) } catch (e) { setJevTest({ ok: false, etapa: 'conexao', erro: e.message }) } finally { setBusy('') }
+  }
+
+  const pullJev = async () => {
+    setBusy('pull-jev')
+    try {
+      await api.put('/settings', { ollama_base_url: vals.ollama_base_url, jev_base_url: vals.jev_base_url, jev_model: vals.jev_model })
+      await api.post('/agent/pull', { motor: 'jev', modelo: vals.jev_model })
+      await runJevTest()
+    } catch (e) { setJevTest({ ok: false, etapa: 'modelo', erro: `falha ao baixar ${vals.jev_model}: ${e.message}` }) } finally { setBusy('') }
+  }
+
   const finish = async (skip = false) => {
     setBusy('concluir'); setError('')
     try {
@@ -104,6 +120,7 @@ export default function Setup({ onDone, onCancel }) {
     true,
     true,
     simulated || !needsKey,
+    true,
     !embNeedsKey,
     true,
     true,
@@ -218,6 +235,43 @@ export default function Setup({ onDone, onCancel }) {
 
           {step === 3 && (
             <div className="col">
+              <p>Qual motor classifica a elegibilidade e audita os planos e as execuções? As regras determinísticas continuam decidindo; o motor recomenda e explica.</p>
+              <div className="provider-grid">
+                {Object.entries(info.motores).map(([k, m]) => (
+                  <button key={k} className={`provider ${vals.agent_engine === k ? 'on' : ''}`} onClick={() => set({ agent_engine: k })}>
+                    <b>{m.nome}</b>
+                    <span className="small muted">{m.descricao}</span>
+                    <span className="small mono">{k === 'jev' ? vals.jev_model : (simulated ? 'agente simulado' : `${p.nome}, ${vals[MODEL_KEY[prov]]}`)}</span>
+                  </button>
+                ))}
+              </div>
+              {vals.agent_engine === 'jev' || vals.agent_compare_enabled ? (
+                <>
+                  <label className="field">Modelo JEV
+                    <input value={vals.jev_model} onChange={(e) => set({ jev_model: e.target.value })} />
+                    <span className="small muted">Tags do Ollama: tev1:0.8b (padrão, o menor e mais rápido), tev1 (4B) ou nimble (9B). Exige Ollama 0.35 ou mais novo.</span>
+                  </label>
+                  <label className="field">URL do Ollama do JEV
+                    <input value={vals.jev_base_url} placeholder={vals.ollama_base_url} onChange={(e) => set({ jev_base_url: e.target.value })} />
+                    <span className="small muted">Vazio usa o mesmo Ollama do passo 3.</span>
+                  </label>
+                  <div className="row">
+                    <button className="btn" onClick={runJevTest} disabled={!!busy}>{busy === 'jev' ? 'Testando...' : 'Testar JEV'}</button>
+                    {jevTest?.etapa === 'modelo' ? <button className="btn" onClick={pullJev} disabled={!!busy}>{busy === 'pull-jev' ? 'Baixando...' : `Baixar ${vals.jev_model}`}</button> : null}
+                  </div>
+                  <TestResult r={jevTest} />
+                </>
+              ) : null}
+              <label className="check"><input type="checkbox" checked={vals.agent_eligibility_enabled} onChange={(e) => set({ agent_eligibility_enabled: e.target.checked })} />
+                O agente também classifica a elegibilidade</label>
+              <label className="check"><input type="checkbox" checked={vals.agent_compare_enabled} onChange={(e) => set({ agent_compare_enabled: e.target.checked })} />
+                Comparar Qwen e JEV nos mesmos casos (o outro motor responde depois, sem decidir)</label>
+              <div className="small muted">O painel Desempenho mostra o tempo de resposta e de processamento de cada motor ao longo do tempo.</div>
+            </div>
+          )}
+
+          {step === 4 && (
+            <div className="col">
               <p>A busca semântica e o agente de perguntas usam embeddings de cada evento. Escolha quem gera esses vetores.</p>
               <div className="provider-grid">
                 {Object.entries(info.provedores_embedding).map(([k, ep]) => (
@@ -238,7 +292,7 @@ export default function Setup({ onDone, onCancel }) {
             </div>
           )}
 
-          {step === 4 && (
+          {step === 5 && (
             <div className="col">
               <label className="field">Revisão humana
                 <select value={vals.human_review_mode} onChange={(e) => set({ human_review_mode: e.target.value })}>
@@ -257,13 +311,14 @@ export default function Setup({ onDone, onCancel }) {
             </div>
           )}
 
-          {step === 5 && (
+          {step === 6 && (
             <div className="col">
               <dl className="kv">
                 <dt>IA dos agentes</dt><dd>{simulated ? 'Sem IA (agente simulado)' : `${p.nome}, ${vals[MODEL_KEY[prov]]}`}</dd>
                 {!simulated && p.chave ? <><dt>Chave de API</dt><dd>{key ? 'nova chave, será salva ao concluir' : <KeyStatus st={keyStatus} />}</dd></> : null}
                 {!simulated && prov === 'ollama' ? <><dt>Ollama</dt><dd className="mono">{vals.ollama_base_url}</dd></> : null}
                 {prov === 'openai' && !simulated ? <><dt>URL base</dt><dd className="mono">{vals.openai_base_url}</dd></> : null}
+                <dt>Motor de decisão</dt><dd>{info.motores[vals.agent_engine]?.nome}{vals.agent_engine === 'jev' ? `, ${vals.jev_model}` : ''}{vals.agent_compare_enabled ? ' (com comparação)' : ''}</dd>
                 <dt>Busca semântica</dt><dd>{info.provedores_embedding[embProv].nome}{EMB_MODEL_KEY[embProv] ? `, ${vals[EMB_MODEL_KEY[embProv]]}` : ''}</dd>
                 <dt>Revisão humana</dt><dd>{vals.human_review_mode === 'SEMPRE' ? 'Sempre' : 'Quando o agente ou as regras reprovarem'}</dd>
                 <dt>Sem IA disponível</dt><dd>{vals.heuristic_fallback_enabled ? 'o agente simulado responde' : 'os casos aguardam a IA voltar'}</dd>

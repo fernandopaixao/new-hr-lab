@@ -212,8 +212,10 @@ async def chat_json(settings: dict, system: str, prompt: str, schema: dict, *, m
     prov = prov or provider(settings)
     model = model or active_model(settings, prov)
     started = time.time()
+    acquired = started
     try:
         async with _semaphore(settings, prov):
+            acquired = time.time()
             if prov == "ollama":
                 content, meta = await _ollama(settings, system, prompt, schema, model, max_tokens, base_url)
             elif prov == "anthropic":
@@ -224,7 +226,10 @@ async def chat_json(settings: dict, system: str, prompt: str, schema: dict, *, m
                 content, meta = await _gemini(settings, system, prompt, schema, model, max_tokens, _key(settings, prov, api_key))
     except (httpx.HTTPError, OSError) as exc:
         raise AgentUnavailable(f"{PROVIDERS[prov]['nome']} indisponível: {type(exc).__name__}: {exc}") from exc
-    meta.update({"provedor": prov, "modelo": model, "duracao_ms": int((time.time() - started) * 1000), "resposta_bruta": content})
+    done = time.time()
+    # duracao_ms includes the wait for a free slot; resposta_ms is the model call alone
+    meta.update({"provedor": prov, "modelo": model, "duracao_ms": int((done - started) * 1000), "espera_ms": int((acquired - started) * 1000),
+                 "resposta_ms": int((done - acquired) * 1000), "resposta_bruta": content})
     return json.loads(content), meta
 
 
@@ -321,6 +326,94 @@ async def _gemini(settings, system, prompt, schema, model, max_tokens, key):
     usage = data.get("usageMetadata") or {}
     return text, {"eval_count": usage.get("candidatesTokenCount"), "prompt_eval_count": usage.get("promptTokenCount"),
                   "modelo_servido": data.get("modelVersion")}
+
+
+# ------------------------------------------------- JEV-style decision models
+JEV_SEMAPHORE_KEY = "jev"
+
+
+def jev_base_url(settings: dict) -> str:
+    return (settings.get("jev_base_url") or settings["ollama_base_url"]).rstrip("/")
+
+
+async def decide(settings: dict, state: dict[str, str], questions: dict[str, dict], *, model: str | None = None,
+                 base_url: str | None = None) -> tuple[dict, dict]:
+    """One call to a JEV-style decision model (Ollama 0.35+, POST /v1/systemone).
+
+    `state` holds named texts and `questions` named questions of type `choice` (criteria: option -> description),
+    `noul` (yes or no, answered with a probability) or `score` (criteria: ordered labels). Every question is
+    answered in the same request, with a probability for each option. There is no free text in the answer.
+    Returns (answers by question name, meta with model, durations and tokens).
+    """
+    model = model or settings["jev_model"]
+    url = (base_url or jev_base_url(settings)).rstrip("/")
+    started = time.time()
+    acquired = started
+    sem_key = (JEV_SEMAPHORE_KEY, max(1, int(settings.get("jev_max_concurrency", 2))))
+    if sem_key not in _semaphores:
+        _semaphores[sem_key] = asyncio.Semaphore(sem_key[1])
+    try:
+        async with _semaphores[sem_key]:
+            acquired = time.time()
+            async with _client(float(settings.get("jev_timeout_s", 30))) as client:
+                resp = await client.post(f"{url}/v1/systemone", json={"model": model, "state": state, "questions": questions})
+    except (httpx.HTTPError, OSError) as exc:
+        raise AgentUnavailable(f"Ollama (JEV) indisponível: {type(exc).__name__}: {exc}") from exc
+    if resp.status_code == 404:
+        detail = _error_text(resp)
+        if "model" in detail.lower():
+            raise ProviderError(f"modelo de decisão {model} não encontrado no Ollama; use 'Baixar modelo JEV' nas configurações ({detail})")
+        raise ProviderError(f"o Ollama em {url} não tem o endpoint /v1/systemone; atualize para a versão 0.35 ou mais nova ({detail})")
+    if resp.status_code >= 400:
+        raise ProviderError(f"Ollama (JEV) respondeu HTTP {resp.status_code}: {_error_text(resp)}")
+    try:
+        data = resp.json()
+    except ValueError as exc:
+        raise json.JSONDecodeError(f"resposta do modelo de decisão não é JSON: {resp.text[:200]}", "", 0) from exc
+    answers = data.get("answers") if isinstance(data, dict) else None
+    if not isinstance(answers, dict) or any(q not in answers for q in questions):
+        raise json.JSONDecodeError(f"resposta do modelo de decisão sem todas as perguntas: {str(data)[:200]}", "", 0)
+    done = time.time()
+    usage = data.get("usage") or {}
+    meta = {"provedor": "ollama-jev", "modelo": model, "modelo_servido": data.get("model"), "url": url,
+            "duracao_ms": int((done - started) * 1000), "espera_ms": int((acquired - started) * 1000), "resposta_ms": int((done - acquired) * 1000),
+            "eval_count": usage.get("output_tokens"), "prompt_eval_count": usage.get("input_tokens"),
+            "resposta_bruta": json.dumps(answers, ensure_ascii=False)}
+    return answers, meta
+
+
+async def jev_health(settings: dict) -> dict:
+    """Whether the decision model is installed in the Ollama that serves it."""
+    model = settings["jev_model"]
+    out: dict[str, Any] = {"modelo": model, "url": jev_base_url(settings)}
+    try:
+        models = await list_models(settings, "ollama", base_url=out["url"])
+    except AgentUnavailable as exc:
+        return {**out, "ok": False, "online": False, "modelo_disponivel": False, "erro": str(exc)}
+    available = has_model(models, model, "ollama")
+    return {**out, "ok": available, "online": True, "modelo_disponivel": available,
+            "erro": None if available else f"modelo de decisão {model} não encontrado; use 'Baixar modelo JEV' nas configurações"}
+
+
+JEV_PING = {"ok": {"type": "noul", "instructions": "O texto diz que o sistema está funcionando?"}}
+
+
+async def test_jev(settings: dict, model: str | None = None, base_url: str | None = None) -> dict:
+    """The wizard's 'Testar JEV': model installed and one tiny decision."""
+    s = {**settings, "jev_model": model or settings["jev_model"], "jev_base_url": base_url if base_url is not None else settings.get("jev_base_url", "")}
+    health = await jev_health(s)
+    out = {"provedor": "jev", "modelo": s["jev_model"], "ok": False}
+    if not health["online"]:
+        return {**out, "etapa": "conexao", "erro": health["erro"]}
+    if not health["modelo_disponivel"]:
+        return {**out, "etapa": "modelo", "erro": health["erro"]}
+    try:
+        _, meta = await decide(s, {"texto": "O sistema está funcionando."}, JEV_PING)
+    except AgentUnavailable as exc:
+        return {**out, "etapa": "chamada", "erro": str(exc)}
+    except json.JSONDecodeError as exc:
+        return {**out, "etapa": "chamada", "erro": str(exc)}
+    return {**out, "ok": True, "duracao_ms": meta["duracao_ms"]}
 
 
 # ------------------------------------------------------------- models list

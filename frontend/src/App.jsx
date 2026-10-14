@@ -14,10 +14,12 @@ import Insights from './pages/Insights.jsx'
 import Ask from './pages/Ask.jsx'
 import Setup from './pages/Setup.jsx'
 import Validity from './pages/Validity.jsx'
+import Performance from './pages/Performance.jsx'
 
 const PAGES = [
   ['linha', 'Linha'],
   ['visao', 'Visão'],
+  ['desempenho', 'Desempenho'],
   ['perguntar', 'Perguntar'],
   ['cenarios', 'Cenários'],
   ['aprovacoes', 'Aprovações'],
@@ -125,7 +127,7 @@ export default function App() {
             title={relogio?.simulado ? `Data simulada pelo relógio do laboratório; o calendário real está em ${fmtIso(relogio.data_real)}` : 'Data do calendário real'}>
             {fmtIso(relogio?.hoje || meta.hoje)}
           </button>
-          <span title={health?.ok ? `Agente: ${health.provedor_nome || 'Ollama'}, ${health.modelo}` : (health?.erro || '')}>
+          <span title={health?.ok ? (health.motor === 'jev' ? `Agente: JEV, ${health.jev?.modelo}` : `Agente: ${health.provedor_nome || 'Ollama'}, ${health.modelo}`) : (health?.erro || '')}>
             {health?.ok ? <Badge tone="ok">IA ok</Badge>
               : <Badge tone="warn">IA indisponível</Badge>}
           </span>
@@ -139,6 +141,7 @@ export default function App() {
         <main className="main">
           {page === 'linha' && <Line />}
           {page === 'visao' && <Insights />}
+          {page === 'desempenho' && <Performance />}
           {page === 'perguntar' && <Ask />}
           {page === 'cenarios' && <Scenarios />}
           {page === 'aprovacoes' && <Approvals />}

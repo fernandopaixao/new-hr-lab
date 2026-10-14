@@ -23,7 +23,7 @@ const CLOUD_FIELDS = {
 const EMB_MODEL_KEY = { ollama: 'embedding_model', openai: 'openai_embedding_model', gemini: 'gemini_embedding_model' }
 
 export default function Settings() {
-  const { toast, stats, reloadStats, openSetup } = useApp()
+  const { toast, stats, reloadStats, openSetup, go } = useApp()
   const [vals, setVals] = useState(null)
   const [health, setHealth] = useState(null)
   const [setup, setSetup] = useState(null)
@@ -42,14 +42,50 @@ export default function Settings() {
     try { setVals((await api.put('/settings', vals)).valores); toast('Configurações salvas e registradas no log') } catch (e) { toast(e.message, 'bad') }
   }
   const check = async () => { setHealth(await api.post('/agent/check')); reloadStats() }
-  const pull = async (modelo) => {
+  const pull = async (modelo, motor) => {
     setBusy(true)
-    try { await api.post('/agent/pull', modelo ? { modelo } : {}); toast(`Modelo ${modelo || vals.ollama_model} baixado`); check() } catch (e) { toast(e.message, 'bad') } finally { setBusy(false) }
+    try {
+      if (motor === 'jev') await api.put('/settings', { jev_model: vals.jev_model, jev_base_url: vals.jev_base_url })
+      await api.post('/agent/pull', { ...(modelo ? { modelo } : {}), ...(motor ? { motor } : {}) })
+      toast(`Modelo ${modelo || vals.ollama_model} baixado`); check()
+    } catch (e) { toast(e.message, 'bad') } finally { setBusy(false) }
   }
   return (
     <div>
       <div className="page-head"><div><h2>Configurações</h2><p>Parâmetros do agente de IA e do comportamento da linha. Alterações valem na hora e ficam no log.</p></div>
         <button className="btn right" onClick={openSetup}>Abrir assistente de configuração</button></div>
+      <div className="panel panel-pad col mb">
+        <div className="row"><h3>Motor dos agentes de elegibilidade e auditoria</h3>
+          <button className="btn sm right" onClick={() => go('desempenho')}>Ver desempenho</button></div>
+        <div className="provider-grid">
+          {Object.entries(setup.motores).map(([k, m]) => (
+            <button key={k} className={`provider ${vals.agent_engine === k ? 'on' : ''}`} onClick={() => set('agent_engine', k)}>
+              <b>{m.nome}</b>
+              <span className="small muted">{m.descricao}</span>
+              <span className="small mono">{k === 'jev' ? vals.jev_model : `${provs[prov]?.nome}, ${vals[{ ollama: 'ollama_model', anthropic: 'anthropic_model', openai: 'openai_model', gemini: 'gemini_model' }[prov]]}`}</span>
+            </button>
+          ))}
+        </div>
+        <div className="form-grid">
+          <label className="field" title="Tag do modelo de decisão no Ollama, como em 'ollama pull tev1:0.8b'.">Modelo JEV
+            <input value={vals.jev_model} list="jev-models" onChange={(e) => set('jev_model', e.target.value)} />
+            <datalist id="jev-models">{['tev1:0.8b', 'tev1', 'nimble'].map((m) => <option key={m} value={m} />)}</datalist></label>
+          <label className="field" title="Vazio usa a mesma URL do Ollama abaixo. O endpoint /v1/systemone exige Ollama 0.35 ou mais novo.">URL do Ollama do JEV
+            <input value={vals.jev_base_url} placeholder={vals.ollama_base_url} onChange={(e) => set('jev_base_url', e.target.value)} /></label>
+          <label className="field">Tempo limite do JEV (s)<input type="number" value={vals.jev_timeout_s} onChange={(e) => set('jev_timeout_s', Number(e.target.value))} /></label>
+          <label className="field" title="Decisões simultâneas por worker no modelo JEV.">Chamadas simultâneas do JEV<input type="number" value={vals.jev_max_concurrency} onChange={(e) => set('jev_max_concurrency', Number(e.target.value))} /></label>
+        </div>
+        <label className="check"><input type="checkbox" checked={vals.agent_eligibility_enabled} onChange={(e) => set('agent_eligibility_enabled', e.target.checked)} />
+          O agente também classifica a elegibilidade (as regras continuam decidindo; divergências ficam no log)</label>
+        <label className="check"><input type="checkbox" checked={vals.agent_compare_enabled} onChange={(e) => set('agent_compare_enabled', e.target.checked)} />
+          Comparar os dois motores: o outro motor responde as mesmas tarefas logo depois, sem decidir</label>
+        <div className="small muted">A comparação mede Qwen e JEV nos mesmos casos e mostra a concordância entre eles no painel de desempenho. Ela soma o tempo do segundo motor a cada estágio com agente.</div>
+        <div className="row">
+          <button className="btn primary" onClick={save}>Salvar</button>
+          <button className="btn" onClick={() => pull(vals.jev_model, 'jev')} disabled={busy}>{busy ? 'Baixando...' : 'Baixar modelo JEV'}</button>
+          {health?.jev ? <span className="small">{health.jev.ok ? <Badge tone="ok">JEV disponível</Badge> : <Badge tone="bad">JEV indisponível</Badge>} {health.jev.erro || ''}</span> : null}
+        </div>
+      </div>
       <div className="grid2">
         <div className="panel panel-pad col">
           <h3>Provedor de IA</h3>
@@ -112,7 +148,7 @@ export default function Settings() {
         </div>
         <div className="col">
           <div className="panel panel-pad col">
-            <div className="row"><h3>Saúde da IA</h3><span className="right">{health?.ok ? <Badge tone="ok">disponível</Badge> : <Badge tone="bad">indisponível</Badge>}</span></div>
+            <div className="row"><h3>Saúde da IA generativa</h3><span className="right">{(health?.ok_qwen ?? health?.ok) ? <Badge tone="ok">disponível</Badge> : <Badge tone="bad">indisponível</Badge>}</span></div>
             <dl className="kv">
               <dt>Provedor</dt><dd>{health?.provedor_nome || provs[prov]?.nome}</dd>
               {health?.url ? <><dt>URL</dt><dd className="mono">{health.url}</dd></> : null}
@@ -121,7 +157,7 @@ export default function Settings() {
               {health?.erro_embedding ? <><dt>Erro embedding</dt><dd className="small" style={{ color: 'var(--bad)' }}>{health.erro_embedding}</dd></> : null}
               <dt>Modelos disponíveis</dt><dd className="small" style={{ maxHeight: 90, overflow: 'auto' }}>{(health?.modelos || []).join(', ') || '-'}</dd>
               <dt>Verificado</dt><dd>{dateTime(health?.verificado_em)}</dd>
-              {health?.erro ? <><dt>Erro</dt><dd className="small" style={{ color: 'var(--bad)' }}>{health.erro}</dd></> : null}
+              {(health?.erro_qwen ?? health?.erro) ? <><dt>Erro</dt><dd className="small" style={{ color: 'var(--bad)' }}>{health.erro_qwen ?? health.erro}</dd></> : null}
             </dl>
             <div className="row">
               <button className="btn" onClick={check}>Verificar agora</button>

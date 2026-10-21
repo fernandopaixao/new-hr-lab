@@ -15,6 +15,7 @@ import Ask from './pages/Ask.jsx'
 import Setup from './pages/Setup.jsx'
 import Validity from './pages/Validity.jsx'
 import Performance from './pages/Performance.jsx'
+import { EXTERNAL, usd } from './pages/Spend.jsx'
 
 const PAGES = [
   ['linha', 'Linha'],
@@ -99,6 +100,9 @@ export default function App() {
   const health = stats?.agente?.saude
   const paused = stats?.controle?.paused
   const relogio = stats?.relogio || meta.relogio
+  const gastos = stats?.gastos
+  const external = EXTERNAL.includes(health?.provedor) || EXTERNAL.includes(health?.provedor_embedding)
+  const spendBlocked = gastos?.bloqueado && (external || gastos.bloqueio?.desde)
 
   const togglePause = async () => {
     await api.post('/control', { paused: !paused })
@@ -127,6 +131,12 @@ export default function App() {
             title={relogio?.simulado ? `Data simulada pelo relógio do laboratório; o calendário real está em ${fmtIso(relogio.data_real)}` : 'Data do calendário real'}>
             {fmtIso(relogio?.hoje || meta.hoje)}
           </button>
+          {external && gastos ? (
+            <button className={`btn sm spend-chip ${spendBlocked ? 'bad' : gastos.alerta ? 'warn' : ''}`} onClick={() => setPage('config')}
+              title={`Gasto com LLM externa (${gastos.periodo_rotulo}) e teto cadastrado`}>
+              {usd(gastos.gasto_usd)} / {usd(gastos.teto_usd)}
+            </button>
+          ) : null}
           <span title={health?.ok ? (health.motor === 'jev' ? `Agente: JEV, ${health.jev?.modelo}` : `Agente: ${health.provedor_nome || 'Ollama'}, ${health.modelo}`) : (health?.erro || '')}>
             {health?.ok ? <Badge tone="ok">IA ok</Badge>
               : <Badge tone="warn">IA indisponível</Badge>}
@@ -138,6 +148,13 @@ export default function App() {
             </select>
           </label>
         </header>
+        {spendBlocked ? (
+          <div className="spend-banner" role="alert">
+            <b>Chamadas externas bloqueadas.</b>
+            <span>{gastos.bloqueio?.mensagem || 'Nenhuma chamada nova é feita aos provedores externos.'}</span>
+            <button className="btn sm" onClick={() => setPage('config')}>Ajustar teto</button>
+          </div>
+        ) : null}
         <main className="main">
           {page === 'linha' && <Line />}
           {page === 'visao' && <Insights />}

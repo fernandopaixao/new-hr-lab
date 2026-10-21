@@ -100,6 +100,7 @@ Todas podem ser alteradas na tela Configurações sem reiniciar; as variáveis d
 | Modelo e URL base OpenAI | `OPENAI_MODEL`, `OPENAI_BASE_URL` | `gpt-5-mini`, `https://api.openai.com/v1` | Usados com `openai`; a URL aceita serviços compatíveis. |
 | Modelo Gemini | `GEMINI_MODEL` | `gemini-2.5-flash` | Usado com `gemini`. |
 | Nuvem: timeout, tokens, simultâneas | `CLOUD_TIMEOUT_S`, `CLOUD_MAX_TOKENS`, `CLOUD_MAX_CONCURRENCY` | 120, 16000, 4 | Por chamada e por processo de worker. |
+| Teto de gastos, período, aviso | `SPEND_CAP_USD`, `SPEND_PERIOD`, `SPEND_ALERT_PERCENT` | 10, MENSAL, 80 | Em US$. 0 bloqueia todas as chamadas externas. Ver ADR 0025. |
 | URL do Ollama | `OLLAMA_BASE_URL` | `http://localhost:11434` (o compose usa `host.docker.internal`) | Onde estão os modelos. |
 | Modelo do conferente | `OLLAMA_MODEL` | `qwen2.5:7b` | Auditoria antes da execução e conferência final. |
 | Timeout | `OLLAMA_TIMEOUT_S` | 180 | Segundos por chamada. |
@@ -173,6 +174,7 @@ O gargalo costuma ser o Ollama. Com o cache ligado, eventos parecidos reaproveit
 | --- | --- | --- |
 | Casos parados em "Aguardando agente de IA" | Ollama inacessível ou sem o modelo; na nuvem, chave ausente ou recusada, modelo errado ou cota estourada | Passe o mouse no selo de IA para ver o erro. Ollama: confira `OLLAMA_BASE_URL` e baixe o modelo em Configurações (no Linux, `OLLAMA_HOST=0.0.0.0`). Nuvem: refaça o teste no assistente de configuração. |
 | Selo "IA ok" mas casos lentos | Modelo em CPU | Use um modelo menor ou GPU; veja [agentes](agentes.md#ajustes-recomendados). |
+| Faixa vermelha "Chamadas externas bloqueadas" e casos aguardando a IA | O gasto do período chegou ao teto de gastos | Em Configurações, aumente o teto, zere o contador ou volte para o Ollama. Os casos retomam sozinhos na próxima verificação da IA. |
 | Índice "Aguardando IA" | Falta `nomic-embed-text`, ou o gerador de embeddings na nuvem está sem chave | Ollama: "Baixar modelo de embedding" em Configurações. Nuvem: salve a chave pelo assistente ou escolha outro gerador. |
 | Perguntar responde 503 | IA fora e modo simulado desligado | Resolva a IA (selo no topo) ou ligue o agente simulado. |
 | Filas crescendo sem andar | Linha ou estação pausada | Verifique os botões de pausa na Linha. |
@@ -188,4 +190,4 @@ pip install -r requirements.txt -r requirements-dev.txt
 python -m pytest -q tests
 ```
 
-Os testes cobrem o avaliador de expressões, a validação de contratos, o motor (elegibilidade, estado alvo, plano, auditoria) e os fatos, o embedding simulado, o agente de perguntas e os provedores de IA na nuvem (com um transporte HTTP simulado). Não precisam de Redis, de Ollama nem de chave de API. A suíte de cenários, na tela Cenários, é o teste de ponta a ponta.
+Os testes cobrem o avaliador de expressões, a validação de contratos, o motor (elegibilidade, estado alvo, plano, auditoria) e os fatos, o embedding simulado, o agente de perguntas e os provedores de IA na nuvem (com um transporte HTTP simulado). Não precisam de Ollama nem de chave de API; os testes do teto de gastos sobem um `redis-server` temporário e são pulados se ele não estiver instalado. A suíte de cenários, na tela Cenários, é o teste de ponta a ponta.

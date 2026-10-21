@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { api } from '../api.js'
 import { Badge, Json, dateTime, useApp } from '../ui.jsx'
+import { SpendPanel } from './Spend.jsx'
 
 const FIELDS = [
   ['ollama_base_url', 'URL do Ollama', 'text', 'Local (http://host.docker.internal:11434), na rede (http://192.168.0.10:11434) ou o container (http://ollama:11434).'],
@@ -54,6 +55,7 @@ export default function Settings() {
     <div>
       <div className="page-head"><div><h2>Configurações</h2><p>Parâmetros do agente de IA e do comportamento da linha. Alterações valem na hora e ficam no log.</p></div>
         <button className="btn right" onClick={openSetup}>Abrir assistente de configuração</button></div>
+      <SpendPanel key={prov} />
       <div className="panel panel-pad col mb">
         <div className="row"><h3>Motor dos agentes de elegibilidade e auditoria</h3>
           <button className="btn sm right" onClick={() => go('desempenho')}>Ver desempenho</button></div>

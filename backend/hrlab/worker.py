@@ -11,7 +11,7 @@ import logging
 import os
 import socket
 
-from . import agent, vigencia
+from . import agent, llm, vigencia
 from .contracts import ContractRepo
 from .domain import STAGE_KEYS
 from .pipeline import Pipeline
@@ -26,6 +26,7 @@ class Worker:
     def __init__(self, store: Store, name: str | None = None):
         self.store = store
         self.pipeline = Pipeline(store)
+        llm.use_ledger(store)
         # a stable name lets a restarted worker take back its pending messages
         self.name = name or os.getenv("WORKER_NAME") or f"{socket.gethostname()}-{os.getpid()}"
         self.stopping = False

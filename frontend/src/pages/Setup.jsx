@@ -1,18 +1,19 @@
 import React, { useEffect, useState } from 'react'
 import { api } from '../api.js'
 import { Badge, dur } from '../ui.jsx'
+import { ApiTestFlow, EXTERNAL, MODEL_KEY, callCost, priceOf, usd } from './Spend.jsx'
 
 const STEPS = [
   ['inicio', 'Início'],
-  ['ia', 'IA dos agentes'],
-  ['conexao', 'Conexão'],
+  ['ia', 'Ollama ou externo'],
+  ['conexao', 'Modelo, chave e teste'],
+  ['gastos', 'Teto de gastos'],
   ['motor', 'Motor de decisão'],
   ['embeddings', 'Busca semântica'],
   ['linha', 'Linha'],
   ['revisao', 'Revisão'],
 ]
 
-const MODEL_KEY = { ollama: 'ollama_model', anthropic: 'anthropic_model', openai: 'openai_model', gemini: 'gemini_model' }
 const EMB_MODEL_KEY = { ollama: 'embedding_model', openai: 'openai_embedding_model', gemini: 'gemini_embedding_model', simulado: null }
 const EFFORTS = [['low', 'Baixo (mais rápido e barato)'], ['medium', 'Médio (padrão)'], ['high', 'Alto'], ['xhigh', 'Muito alto'], ['max', 'Máximo']]
 
@@ -46,6 +47,8 @@ export default function Setup({ onDone, onCancel }) {
   const [models, setModels] = useState([])
   const [busy, setBusy] = useState('')
   const [jevTest, setJevTest] = useState(null)
+  // price typed for the chosen model (null: keep the table or the saved price)
+  const [priceEdit, setPriceEdit] = useState(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -68,7 +71,13 @@ export default function Setup({ onDone, onCancel }) {
     } else {
       set({ llm_provider: k, embedding_provider: defaultEmbedding(k), heuristic_fallback_enabled: info.valores.heuristic_fallback_enabled && k === info.valores.llm_provider })
     }
-    setTest(null); setModels([]); setKey('')
+    setTest(null); setModels([]); setKey(''); setPriceEdit(null)
+  }
+  const mode = simulated ? 'simulado' : prov === 'ollama' ? 'ollama' : 'externo'
+  const chooseMode = (m) => {
+    if (m === 'externo') {
+      if (mode !== 'externo') chooseProvider(EXTERNAL.find((k) => k === info.valores.llm_provider) || EXTERNAL.find((k) => info.chaves[k]?.configurada) || 'anthropic')
+    } else chooseProvider(m)
   }
 
   const runTest = async () => {
@@ -107,6 +116,7 @@ export default function Setup({ onDone, onCancel }) {
     setBusy('concluir'); setError('')
     try {
       if (!skip && key && p.chave) await api.put('/setup/key', { provedor: prov, chave: key })
+      if (!skip && priceEdit && EXTERNAL.includes(prov)) await api.put('/gastos/precos', { provedor: prov, modelo: vals[MODEL_KEY[prov]], ...priceEdit })
       await api.post('/setup/complete', skip ? { pulado: true } : { valores: vals })
       onDone()
     } catch (e) { setError(e.message); setBusy('') }
@@ -116,15 +126,16 @@ export default function Setup({ onDone, onCancel }) {
   const needsKey = !simulated && p.chave && !key && !keyStatus?.configurada
   const embProv = vals.embedding_provider
   const embNeedsKey = info.provedores[embProv]?.chave && embProv !== prov && !info.chaves[embProv]?.configurada
-  const canNext = [
-    true,
-    true,
-    simulated || !needsKey,
-    true,
-    !embNeedsKey,
-    true,
-    true,
-  ][step]
+  const usesExternal = !simulated && (EXTERNAL.includes(prov) || EXTERNAL.includes(embProv))
+  const cur = STEPS[step][0]
+  const canNext = {
+    conexao: simulated || !needsKey,
+    gastos: !usesExternal || Number(vals.spend_cap_usd) > 0,
+    embeddings: !embNeedsKey,
+  }[cur] ?? true
+  const modelPrice = EXTERNAL.includes(prov) ? priceOf(info.precos, prov, vals[MODEL_KEY[prov]]) : null
+  const price = priceEdit || modelPrice
+  const typical = price ? callCost(price) : null
   const datalist = [...new Set([...(p.modelos || []), ...models])]
 
   return (
@@ -146,9 +157,9 @@ export default function Setup({ onDone, onCancel }) {
         </ol>
 
         <div className="setup-body">
-          {step === 0 && (
+          {cur === 'inicio' && (
             <div className="col">
-              <p>Este assistente aparece na primeira vez que o laboratório abre. Ele define qual modelo de linguagem os agentes usam: um Ollama local ou na rede, ou um provedor na nuvem (Anthropic Claude, OpenAI ou compatível, Google Gemini).</p>
+              <p>Este assistente aparece na primeira vez que o laboratório abre. A primeira pergunta é onde a IA dos agentes roda: no Ollama (local ou na rede) ou num provedor externo (Anthropic Claude, Google Gemini ou OpenAI). Com um provedor externo você escolhe o modelo, informa a chave de API, testa a API e cadastra um teto de gastos.</p>
               <h4>Ambiente encontrado</h4>
               <dl className="kv">
                 <dt>Interface</dt><dd className="mono">{location.origin}</dd>
@@ -160,28 +171,48 @@ export default function Setup({ onDone, onCancel }) {
             </div>
           )}
 
-          {step === 1 && (
+          {cur === 'ia' && (
             <div className="col">
-              <p>Qual IA os agentes de auditoria, de conferência final e de perguntas devem usar?</p>
-              <div className="provider-grid">
-                {Object.entries(info.provedores).map(([k, pv]) => (
-                  <button key={k} className={`provider ${!simulated && prov === k ? 'on' : ''}`} onClick={() => chooseProvider(k)}>
-                    <b>{pv.nome}</b>
-                    <span className="small muted">{pv.descricao}</span>
-                    <span className="small">{pv.chave ? (info.chaves[k]?.configurada ? <Badge tone="ok">chave salva</Badge> : <Badge>precisa de chave de API</Badge>) : <Badge tone="ok">sem chave</Badge>}</span>
-                  </button>
-                ))}
-                <button className={`provider ${simulated ? 'on' : ''}`} onClick={() => chooseProvider('simulado')}>
+              <p>Como os agentes de auditoria, de conferência final e de perguntas vão usar IA?</p>
+              <div className="mode-grid">
+                <button className={`provider ${mode === 'ollama' ? 'on' : ''}`} onClick={() => chooseMode('ollama')}>
+                  <b>Ollama</b>
+                  <span className="small muted">{info.provedores.ollama.descricao}</span>
+                  <span className="small"><Badge tone="ok">sem chave e sem custo por token</Badge></span>
+                </button>
+                <button className={`provider ${mode === 'externo' ? 'on' : ''}`} onClick={() => chooseMode('externo')}>
+                  <b>Externo</b>
+                  <span className="small muted">Anthropic Claude, Google Gemini ou OpenAI pela API do provedor, com chave de API e teto de gastos.</span>
+                  <span className="small"><Badge tone="warn">cobra por uso</Badge></span>
+                </button>
+                <button className={`provider ${simulated ? 'on' : ''}`} onClick={() => chooseMode('simulado')}>
                   <b>Sem IA (agente simulado)</b>
                   <span className="small muted">Um agente heurístico responde no lugar da IA e cada decisão dele fica marcada. Bom para demonstrações sem rede.</span>
                   <span className="small"><Badge tone="warn">sem IA de verdade</Badge></span>
                 </button>
               </div>
-              {p.chave && !simulated ? <div className="callout warn small">Com um provedor na nuvem, os dados dos casos (fictícios neste laboratório) são enviados à API do provedor, que cobra por uso.</div> : null}
+              {mode === 'externo' ? (
+                <>
+                  <h4 className="mt">Qual provedor externo?</h4>
+                  <div className="provider-grid">
+                    {['anthropic', 'gemini', 'openai'].map((k) => {
+                      const pv = info.provedores[k]
+                      return (
+                        <button key={k} className={`provider ${prov === k ? 'on' : ''}`} onClick={() => chooseProvider(k)}>
+                          <b>{pv.nome}</b>
+                          <span className="small muted">{pv.descricao}</span>
+                          <span className="small">{info.chaves[k]?.configurada ? <Badge tone="ok">chave salva</Badge> : <Badge>precisa de chave de API</Badge>}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className="callout warn small">Com um provedor externo, os dados dos casos (fictícios neste laboratório) são enviados à API do provedor, que cobra por uso. Nos próximos passos você escolhe o modelo, informa a chave, testa a API e cadastra um teto de gastos: atingido o teto, nenhuma chamada nova é feita.</div>
+                </>
+              ) : null}
             </div>
           )}
 
-          {step === 2 && (
+          {cur === 'conexao' && (
             <div className="col">
               {simulated ? (
                 <div className="callout">Sem IA não há conexão a configurar. O agente simulado responde na hora e a busca semântica usa embeddings simulados.</div>
@@ -221,19 +252,61 @@ export default function Setup({ onDone, onCancel }) {
                     </label>
                   ) : null}
                   <div className="row">
-                    <button className="btn" onClick={runTest} disabled={!!busy || needsKey}>{busy === 'teste' ? 'Testando...' : 'Testar conexão'}</button>
+                    <button className="btn primary" onClick={runTest} disabled={!!busy || needsKey}>{busy === 'teste' ? 'Testando...' : 'Testar API'}</button>
                     {prov === 'ollama' && test?.etapa === 'modelo' ? (
                       <button className="btn" onClick={() => pull(vals.ollama_model)} disabled={!!busy}>{busy.startsWith('pull') ? 'Baixando...' : `Baixar ${vals.ollama_model}`}</button>
                     ) : null}
                     {needsKey ? <span className="small muted">Informe a chave para testar e seguir.</span> : null}
                   </div>
-                  <TestResult r={test} />
+                  <h4 className="mt">Teste da API</h4>
+                  <ApiTestFlow r={test} prov={prov} vals={vals} running={busy === 'teste'} />
                 </>
               )}
             </div>
           )}
 
-          {step === 3 && (
+          {cur === 'gastos' && (
+            <div className="col">
+              {!usesExternal ? (
+                <div className="callout">{simulated ? 'Sem IA' : 'Com o Ollama'} não há custo por token, então o teto não se aplica agora. O valor abaixo fica guardado e passa a valer se um provedor externo for escolhido depois.</div>
+              ) : (
+                <p>Cadastre quanto o laboratório pode gastar com {EXTERNAL.includes(prov) ? info.provedores[prov].nome : info.provedores[embProv].nome}. Antes de cada chamada externa o gasto é conferido; atingido o teto, <b>nenhuma chamada nova é feita</b>, os casos aguardam a IA e uma mensagem de erro aparece no topo da tela e no log.</p>
+              )}
+              <div className="form-grid">
+                <label className="field">Teto de gastos (US$)
+                  <input type="number" min="0" step="0.5" value={vals.spend_cap_usd} onChange={(e) => set({ spend_cap_usd: Number(e.target.value) })} />
+                  <span className="small muted">0 bloqueia todas as chamadas externas.</span>
+                </label>
+                <label className="field">Período
+                  <select value={vals.spend_period} onChange={(e) => set({ spend_period: e.target.value })}>
+                    <option value="MENSAL">Mensal (zera todo dia 1)</option>
+                    <option value="TOTAL">Total (nunca zera)</option>
+                  </select>
+                </label>
+                <label className="field">Aviso no log em (% do teto)
+                  <input type="number" min="0" max="100" value={vals.spend_alert_percent} onChange={(e) => set({ spend_alert_percent: Number(e.target.value) })} />
+                </label>
+              </div>
+              {usesExternal && !(Number(vals.spend_cap_usd) > 0) ? <div className="callout bad small">Informe um teto maior que zero para usar um provedor externo.</div> : null}
+              {price ? (
+                <>
+                  <h4 className="mt">Preço de {vals[MODEL_KEY[prov]]} (US$ por milhão de tokens)</h4>
+                  <div className="form-grid">
+                    <label className="field">Entrada<input type="number" min="0" step="0.01" value={price.entrada} onChange={(e) => setPriceEdit({ entrada: e.target.value, saida: price.saida })} /></label>
+                    <label className="field">Saída<input type="number" min="0" step="0.01" value={price.saida} onChange={(e) => setPriceEdit({ entrada: price.entrada, saida: e.target.value })} /></label>
+                  </div>
+                  <div className="small muted">
+                    {priceEdit ? 'Preço editado; será salvo ao concluir.' : modelPrice?.origem === 'desconhecido' ? 'Modelo fora da tabela de referência: até você informar o preço, vale o do modelo mais caro do provedor.' : 'Preço da tabela de referência (confira na página do provedor).'}
+                    {typical != null ? ` Uma auditoria típica (cerca de 6.000 tokens de entrada e 800 de saída) custa perto de ${usd(typical)}` : ''}
+                    {typical && Number(vals.spend_cap_usd) > 0 ? `; o teto cobre umas ${Math.floor(Number(vals.spend_cap_usd) / typical).toLocaleString('pt-BR')} auditorias.` : '.'}
+                  </div>
+                </>
+              ) : null}
+              {info.gastos ? <div className="small">Gasto atual: <b>{usd(info.gastos.gasto_usd)}</b> ({info.gastos.periodo_rotulo}). {info.gastos.bloqueado ? <Badge tone="bad">bloqueado</Badge> : null}</div> : null}
+            </div>
+          )}
+
+          {cur === 'motor' && (
             <div className="col">
               <p>Qual motor classifica a elegibilidade e audita os planos e as execuções? As regras determinísticas continuam decidindo; o motor recomenda e explica.</p>
               <div className="provider-grid">
@@ -270,7 +343,7 @@ export default function Setup({ onDone, onCancel }) {
             </div>
           )}
 
-          {step === 4 && (
+          {cur === 'embeddings' && (
             <div className="col">
               <p>A busca semântica e o agente de perguntas usam embeddings de cada evento. Escolha quem gera esses vetores.</p>
               <div className="provider-grid">
@@ -292,7 +365,7 @@ export default function Setup({ onDone, onCancel }) {
             </div>
           )}
 
-          {step === 5 && (
+          {cur === 'linha' && (
             <div className="col">
               <label className="field">Revisão humana
                 <select value={vals.human_review_mode} onChange={(e) => set({ human_review_mode: e.target.value })}>
@@ -311,10 +384,11 @@ export default function Setup({ onDone, onCancel }) {
             </div>
           )}
 
-          {step === 6 && (
+          {cur === 'revisao' && (
             <div className="col">
               <dl className="kv">
                 <dt>IA dos agentes</dt><dd>{simulated ? 'Sem IA (agente simulado)' : `${p.nome}, ${vals[MODEL_KEY[prov]]}`}</dd>
+                {usesExternal ? <><dt>Teto de gastos</dt><dd>{usd(Number(vals.spend_cap_usd) || 0)} {vals.spend_period === 'TOTAL' ? 'no total' : 'por mês'}, aviso em {vals.spend_alert_percent}%</dd></> : null}
                 {!simulated && p.chave ? <><dt>Chave de API</dt><dd>{key ? 'nova chave, será salva ao concluir' : <KeyStatus st={keyStatus} />}</dd></> : null}
                 {!simulated && prov === 'ollama' ? <><dt>Ollama</dt><dd className="mono">{vals.ollama_base_url}</dd></> : null}
                 {prov === 'openai' && !simulated ? <><dt>URL base</dt><dd className="mono">{vals.openai_base_url}</dd></> : null}
@@ -323,7 +397,7 @@ export default function Setup({ onDone, onCancel }) {
                 <dt>Revisão humana</dt><dd>{vals.human_review_mode === 'SEMPRE' ? 'Sempre' : 'Quando o agente ou as regras reprovarem'}</dd>
                 <dt>Sem IA disponível</dt><dd>{vals.heuristic_fallback_enabled ? 'o agente simulado responde' : 'os casos aguardam a IA voltar'}</dd>
               </dl>
-              {!simulated && !test?.ok ? <div className="callout warn small">A conexão ainda não foi testada com sucesso. Você pode concluir assim mesmo; os casos aguardam até a IA responder.</div> : null}
+              {!simulated && !test?.ok ? <div className="callout warn small">A API ainda não foi testada com sucesso. Você pode concluir assim mesmo; os casos aguardam até a IA responder.</div> : null}
               <div className="small muted">Ao concluir, as escolhas ficam no log como alteração de configuração.</div>
             </div>
           )}

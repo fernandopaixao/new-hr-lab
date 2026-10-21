@@ -17,6 +17,10 @@ simulated hashing model.
 Connection, authentication and rate limit errors raise AgentUnavailable (the
 case waits, as it always did for Ollama); an answer that is not valid JSON
 raises json.JSONDecodeError (the caller retries or sends the case to a person).
+
+External providers are under a spending cap (budget.py): before each call the
+ledger checks the cap and raises BudgetExceeded (an AgentUnavailable) without
+sending anything; after each call the token usage is priced and charged.
 """
 from __future__ import annotations
 
@@ -27,7 +31,7 @@ from typing import Any
 
 import httpx
 
-from . import apikeys
+from . import apikeys, budget
 
 PROVIDERS: dict[str, dict[str, Any]] = {
     "ollama": {
@@ -68,6 +72,15 @@ ANTHROPIC_FALLBACK_MODELS = ("claude-fable-5-1", "claude-opus-5-5", "claude-opus
 
 # Tests replace this with an httpx.MockTransport.
 transport: httpx.AsyncBaseTransport | None = None
+# Spend counters of the external providers; set by the API, the workers and the indexer (use_ledger).
+# Without a ledger nothing is priced or blocked.
+ledger: budget.Ledger | None = None
+
+
+def use_ledger(store) -> budget.Ledger:
+    global ledger
+    ledger = budget.Ledger(store)
+    return ledger
 
 
 class AgentUnavailable(Exception):
@@ -76,6 +89,34 @@ class AgentUnavailable(Exception):
 
 class ProviderError(AgentUnavailable):
     """The provider answered with an error (bad key, unknown model, quota)."""
+
+
+class BudgetExceeded(ProviderError):
+    """The spending cap of the external providers is reached; the call was not sent."""
+
+
+async def guard(settings: dict, prov: str, model: str, *texts: str) -> None:
+    """Refuses an external call that would start at or above the spending cap."""
+    if ledger is None or not budget.is_external(prov):
+        return
+    try:
+        await ledger.check(settings, prov, model, budget.estimate_tokens(*texts) if texts else 0)
+    except budget.BudgetExceeded as exc:
+        raise BudgetExceeded(str(exc)) from None
+
+
+async def charge(settings: dict, prov: str, model: str, tokens_in: int | None, tokens_out: int | None, *, origem: str,
+                 estimate_from: tuple[str, str] = ("", "")) -> float | None:
+    """Prices one finished external call. Providers that omit the usage are estimated from the texts."""
+    if ledger is None or not budget.is_external(prov):
+        return None
+    estimated = tokens_in is None or tokens_out is None
+    if tokens_in is None:
+        tokens_in = budget.estimate_tokens(estimate_from[0])
+    if tokens_out is None:
+        tokens_out = budget.estimate_tokens(estimate_from[1]) if estimate_from[1] else 0
+    rec = await ledger.charge(settings, prov, model, tokens_in, tokens_out, origem=origem, estimado=estimated)
+    return rec.get("custo_usd")
 
 
 def provider(settings: dict) -> str:
@@ -207,10 +248,11 @@ def gemini_schema(schema: Any) -> Any:
 # ------------------------------------------------------------------ chat
 async def chat_json(settings: dict, system: str, prompt: str, schema: dict, *, model: str | None = None,
                     max_tokens: int | None = None, prov: str | None = None, api_key: str | None = None,
-                    base_url: str | None = None) -> tuple[dict, dict]:
-    """One structured call. Returns (parsed JSON, meta with model, duration, tokens and raw answer)."""
+                    base_url: str | None = None, origem: str = "agente") -> tuple[dict, dict]:
+    """One structured call. Returns (parsed JSON, meta with model, duration, tokens, cost and raw answer)."""
     prov = prov or provider(settings)
     model = model or active_model(settings, prov)
+    await guard(settings, prov, model, system, prompt)
     started = time.time()
     acquired = started
     try:
@@ -227,6 +269,8 @@ async def chat_json(settings: dict, system: str, prompt: str, schema: dict, *, m
     except (httpx.HTTPError, OSError) as exc:
         raise AgentUnavailable(f"{PROVIDERS[prov]['nome']} indisponível: {type(exc).__name__}: {exc}") from exc
     done = time.time()
+    meta["custo_usd"] = await charge(settings, prov, model, meta.get("prompt_eval_count"), meta.get("eval_count"), origem=origem,
+                                     estimate_from=(system + prompt, content))
     # duracao_ms includes the wait for a free slot; resposta_ms is the model call alone
     meta.update({"provedor": prov, "modelo": model, "duracao_ms": int((done - started) * 1000), "espera_ms": int((acquired - started) * 1000),
                  "resposta_ms": int((done - acquired) * 1000), "resposta_bruta": content})
@@ -418,7 +462,8 @@ async def test_jev(settings: dict, model: str | None = None, base_url: str | Non
 
 # ------------------------------------------------------------- models list
 async def list_models(settings: dict, prov: str, *, api_key: str | None = None, base_url: str | None = None) -> list[str]:
-    """Models the provider offers to this key. Raises AgentUnavailable."""
+    """Models the provider offers to this key. Raises AgentUnavailable (also when the spending cap is reached)."""
+    await guard(settings, prov, "")
     try:
         async with _client(10) as client:
             if prov == "ollama":
@@ -458,26 +503,36 @@ async def embed(settings: dict, texts: list[str], kind: str = "document") -> lis
     prov = embedding_provider(settings)
     if prov == "simulado":
         raise AgentUnavailable("embeddings configurados como simulados")
-    try:
-        if prov == "ollama":
+    if prov == "ollama":
+        try:
             return await _ollama_embed(settings, texts, kind)
+        except (httpx.HTTPError, OSError, KeyError) as exc:
+            raise AgentUnavailable(f"embeddings indisponíveis: {type(exc).__name__}: {exc}") from exc
+    model = settings["openai_embedding_model"] if prov == "openai" else settings["gemini_embedding_model"]
+    await guard(settings, prov, model, *texts)
+    try:
         key = _key(settings, prov)
         async with _client(_timeout(settings, prov)) as client:
             if prov == "openai":
                 url = (settings.get("openai_base_url") or "https://api.openai.com/v1").rstrip("/")
-                resp = await client.post(f"{url}/embeddings", json={"model": settings["openai_embedding_model"], "input": texts},
+                resp = await client.post(f"{url}/embeddings", json={"model": model, "input": texts},
                                          headers={"Authorization": f"Bearer {key}"})
                 _raise_for(resp, prov)
-                return [d["embedding"] for d in sorted(resp.json()["data"], key=lambda d: d.get("index", 0))]
-            model = settings["gemini_embedding_model"]
-            task = "RETRIEVAL_QUERY" if kind == "query" else "RETRIEVAL_DOCUMENT"
-            reqs = [{"model": f"models/{model}", "content": {"parts": [{"text": t}]}, "taskType": task} for t in texts]
-            resp = await client.post(f"{GEMINI_URL}/models/{model}:batchEmbedContents", json={"requests": reqs},
-                                     headers={"x-goog-api-key": key})
-            _raise_for(resp, prov)
-            return [e["values"] for e in resp.json()["embeddings"]]
+                data = resp.json()
+                vectors = [d["embedding"] for d in sorted(data["data"], key=lambda d: d.get("index", 0))]
+                tokens = (data.get("usage") or {}).get("prompt_tokens")
+            else:
+                task = "RETRIEVAL_QUERY" if kind == "query" else "RETRIEVAL_DOCUMENT"
+                reqs = [{"model": f"models/{model}", "content": {"parts": [{"text": t}]}, "taskType": task} for t in texts]
+                resp = await client.post(f"{GEMINI_URL}/models/{model}:batchEmbedContents", json={"requests": reqs},
+                                         headers={"x-goog-api-key": key})
+                _raise_for(resp, prov)
+                vectors = [e["values"] for e in resp.json()["embeddings"]]
+                tokens = None  # batchEmbedContents does not return the usage
     except (httpx.HTTPError, OSError, KeyError) as exc:
         raise AgentUnavailable(f"embeddings indisponíveis: {type(exc).__name__}: {exc}") from exc
+    await charge(settings, prov, model, tokens, 0, origem="embeddings", estimate_from=("".join(texts), ""))
+    return vectors
 
 
 def _prefix(model: str, kind: str) -> str:
@@ -544,21 +599,71 @@ async def check_health(settings: dict) -> dict:
 PING_SCHEMA = {"type": "object", "properties": {"resposta": {"type": "string"}}, "required": ["resposta"]}
 
 
+TEST_STAGES = (
+    ("chave", "Chave de API"),
+    ("teto", "Teto de gastos"),
+    ("conexao", "Conexão"),
+    ("modelo", "Modelo"),
+    ("chamada", "Chamada de teste"),
+)
+
+
 async def test_connection(settings: dict, prov: str, model: str, *, api_key: str | None = None, base_url: str | None = None) -> dict:
-    """Lists the models and makes one tiny structured call, as the setup wizard's 'Testar conexão'."""
+    """The setup wizard's 'Testar API': one result per stage, so the interface can draw where it stopped.
+
+    Stages: the key exists (external), the spending cap leaves room (external), the provider answers the
+    model list, the model is offered and one tiny structured call comes back as JSON (priced like any call).
+    `etapa` names the stage that failed."""
     out: dict[str, Any] = {"provedor": prov, "modelo": model, "ok": False}
+    stages = {k: {"id": k, "nome": n, "estado": "PENDENTE", "detalhe": None} for k, n in TEST_STAGES}
+    external = budget.is_external(prov)
+
+    def finish(stage: str | None, error: str | None = None) -> dict:
+        if stage:
+            stages[stage].update(estado="FALHOU", detalhe=error)
+            out.update(etapa=stage, erro=error)
+        return {**out, "etapas": list(stages.values())}
+
+    if external:
+        key = api_key or apikeys.get_key(prov)
+        if not key:
+            return finish("chave", f"chave de API de {PROVIDERS[prov]['nome']} não informada")
+        stages["chave"].update(estado="OK", detalhe=f"chave {'digitada no assistente' if api_key else 'salva'}, termina em {key[-4:]}")
+        if ledger is not None:
+            try:
+                await ledger.check(settings, prov, model, 50, mark=False)
+            except budget.BudgetExceeded as exc:
+                return finish("teto", str(exc))
+            st = await ledger.status(settings)
+            if st["teto_usd"] > 0:
+                stages["teto"].update(estado="OK", detalhe=f"{budget.usd(st['gasto_usd'])} gastos de {budget.usd(st['teto_usd'])} ({st['periodo_rotulo']})")
+            else:
+                stages["teto"].update(estado="IGNORADO", detalhe=f"sem teto cadastrado; {budget.usd(st['gasto_usd'])} gastos ({st['periodo_rotulo']})")
+        else:
+            stages["teto"].update(estado="IGNORADO", detalhe="sem controle de gastos neste processo")
+    else:
+        stages["chave"].update(estado="IGNORADO", detalhe="o Ollama não usa chave")
+        stages["teto"].update(estado="IGNORADO", detalhe="o Ollama roda localmente e não tem custo por token")
+    started = time.time()
     try:
         models = await list_models(settings, prov, api_key=api_key, base_url=base_url)
     except AgentUnavailable as exc:
-        return {**out, "etapa": "conexao", "erro": str(exc)}
+        return finish("teto" if isinstance(exc, BudgetExceeded) else "conexao", str(exc))
     out["modelos"] = models
+    stages["conexao"].update(estado="OK", detalhe=f"{len(models)} modelo(s) listados em {int((time.time() - started) * 1000)} ms")
     if not has_model(models, model, prov):
-        return {**out, "etapa": "modelo", "erro": f"o modelo {model} não está disponível para esta conta ou servidor"}
+        return finish("modelo", f"o modelo {model} não está disponível para esta conta ou servidor")
+    stages["modelo"].update(estado="OK", detalhe=f"{model} disponível" if models else f"{model} (a conta não lista modelos; segue para a chamada)")
     try:
         parsed, meta = await chat_json(settings, "Responda em português, só com JSON.", 'Responda {"resposta": "ok"}.', PING_SCHEMA,
-                                       model=model, max_tokens=50, prov=prov, api_key=api_key, base_url=base_url)
+                                       model=model, max_tokens=50, prov=prov, api_key=api_key, base_url=base_url, origem="teste")
     except AgentUnavailable as exc:
-        return {**out, "etapa": "chamada", "erro": str(exc)}
+        return finish("teto" if isinstance(exc, BudgetExceeded) else "chamada", str(exc))
     except json.JSONDecodeError as exc:
-        return {**out, "etapa": "chamada", "erro": f"resposta fora do formato JSON: {exc}"}
-    return {**out, "ok": True, "duracao_ms": meta["duracao_ms"], "resposta": parsed.get("resposta")}
+        return finish("chamada", f"resposta fora do formato JSON: {exc}")
+    tokens = f"{meta.get('prompt_eval_count') or '?'} tokens de entrada, {meta.get('eval_count') or '?'} de saída"
+    cost = f", custo {budget.usd(meta['custo_usd'])}" if meta.get("custo_usd") is not None else ""
+    stages["chamada"].update(estado="OK", detalhe=f"respondeu {json.dumps(parsed, ensure_ascii=False)} em {meta['duracao_ms']} ms; {tokens}{cost}")
+    out.update({"ok": True, "duracao_ms": meta["duracao_ms"], "resposta": parsed.get("resposta"), "tokens_entrada": meta.get("prompt_eval_count"),
+                "tokens_saida": meta.get("eval_count"), "custo_usd": meta.get("custo_usd"), "modelo_servido": meta.get("modelo_servido")})
+    return finish(None)

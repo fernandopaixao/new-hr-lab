@@ -37,6 +37,12 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "cloud_timeout_s": int(os.getenv("CLOUD_TIMEOUT_S", "120")),
     "cloud_max_tokens": int(os.getenv("CLOUD_MAX_TOKENS", "16000")),
     "cloud_max_concurrency": int(os.getenv("CLOUD_MAX_CONCURRENCY", "4")),
+    # Optional spending cap of the external providers in US$ (see budget.py). 0: no cap, spend is only counted.
+    "spend_cap_usd": float(os.getenv("SPEND_CAP_USD", "0")),
+    # MENSAL: the counter restarts each calendar month (UTC); TOTAL: never restarts.
+    "spend_period": os.getenv("SPEND_PERIOD", "MENSAL"),
+    # A log entry is written when the spend passes this share of the cap.
+    "spend_alert_percent": float(os.getenv("SPEND_ALERT_PERCENT", "80")),
     "agent_cache_enabled": _bool("AGENT_CACHE_ENABLED", True),
     # Engine of the eligibility and audit agents (see engines.py): qwen (generative model of the
     # provider above, qwen2.5:7b by default) or jev (JEV-style decision model served by Ollama).
@@ -74,6 +80,7 @@ CHOICES = {
     "agent_engine": ("qwen", "jev"),
     "embedding_provider": ("ollama", "openai", "gemini", "simulado"),
     "anthropic_effort": ("", "low", "medium", "high", "xhigh", "max"),
+    "spend_period": ("MENSAL", "TOTAL"),
 }
 
 
@@ -90,6 +97,9 @@ def coerce_settings(patch: dict[str, Any]) -> dict[str, Any]:
     for key, allowed in CHOICES.items():
         if key in out and out[key] not in allowed:
             raise ValueError(f"{key} deve ser um de {allowed}")
+    for key in ("spend_cap_usd", "spend_alert_percent"):
+        if key in out and out[key] < 0:
+            raise ValueError(f"{key} não pode ser negativo")
     if "human_review_mode" in out and out["human_review_mode"] not in HUMAN_REVIEW_MODES:
         raise ValueError(f"human_review_mode deve ser um de {HUMAN_REVIEW_MODES}")
     return out

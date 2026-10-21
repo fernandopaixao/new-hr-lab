@@ -63,6 +63,8 @@ docker compose up -d --build
 
 Escolha no assistente (ou em Configurações) entre Anthropic Claude, OpenAI ou compatível (Azure OpenAI, OpenRouter, Groq, vLLM, trocando a URL base) e Google Gemini. A chave digitada no assistente fica num arquivo do volume de dados, nunca no Redis nem no log; uma chave em `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` ou `GEMINI_API_KEY` no `.env` tem prioridade. Com um provedor na nuvem, os dados dos casos (fictícios) vão para a API do provedor, que cobra por uso. Veja [docs/agentes.md](docs/agentes.md#provedores).
 
+Com provedor externo, o assistente também permite cadastrar um **teto de gastos** opcional em dólares (mensal ou total). Cada chamada é precificada pelos tokens informados pelo provedor e o gasto aparece na barra do topo; com teto, ao atingi-lo, nenhuma chamada nova é enviada, os casos aguardam a IA e uma faixa vermelha aparece no topo da tela, além da entrada no log. O painel em Configurações mostra o gasto, os preços por modelo e as últimas chamadas ([ADR 0025](docs/adr/0025-teto-de-gastos-com-llm-externa.md)).
+
 ### Motor JEV
 
 Além do agente generativo (Qwen), a elegibilidade e as auditorias podem usar um modelo de decisão no estilo JEV, servido pelo Ollama 0.35 ou mais novo: `ollama pull tev1:0.8b` e escolha "JEV" em Configurações ou no assistente. Ligue "Comparar os dois motores" para medir Qwen e JEV nos mesmos casos na tela Desempenho. Veja [docs/agentes.md](docs/agentes.md#motores-qwen-e-jev).
@@ -93,7 +95,7 @@ Na tela Cenários, a aba "Rajada de eventos" dispara dezenas de eventos aleatór
 | Contratos | Editor estruturado e YAML para incluir ou remover regras e operações, mudar vigências e salvar como nova versão. |
 | Prateleira | Catálogo de operações, com execução avulsa ou simulada. |
 | Log | Todas as decisões e alterações, com filtro e exportação em JSONL. |
-| Configurações | Motor dos agentes (Qwen ou JEV) e comparação entre eles, provedor de IA e assistente de configuração, parâmetros do Ollama e da nuvem, gerador de embeddings e modelo de perguntas, modo de revisão humana, atraso visual, injeção de falhas e reinício do laboratório. |
+| Configurações | Teto de gastos com LLM externa (gasto, preço por modelo, últimas chamadas), motor dos agentes (Qwen ou JEV) e comparação entre eles, provedor de IA e assistente de configuração, parâmetros do Ollama e da nuvem, gerador de embeddings e modelo de perguntas, modo de revisão humana, atraso visual, injeção de falhas e reinício do laboratório. |
 
 ## Desenvolvimento local
 
@@ -121,6 +123,7 @@ backend/hrlab/
   agent.py          agente de conferência (e heurístico opcional)
   llm.py            provedores de IA: Ollama, Claude, OpenAI e compatíveis, Gemini
   apikeys.py        chaves de API dos provedores na nuvem
+  budget.py         teto de gastos: preço por modelo, contador e bloqueio das chamadas externas
   facts.py          modelo de leitura: fatos por caso, narrativas e painel
   embeddings.py     embeddings pelo provedor escolhido, modo simulado e busca vetorial
   indexer.py        serviço que indexa os eventos a partir do log

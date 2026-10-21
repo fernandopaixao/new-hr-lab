@@ -28,7 +28,7 @@ Guia para apresentar a solução a públicos diferentes. Cada roteiro diz a mens
 | --- | --- | --- |
 | 0 a 5 | Demo HTML, aba "Linha de produção" | O problema: regras espalhadas, exceções por e-mail, auditoria por amostragem |
 | 5 a 10 | Cenários, "Promoção padrão"; acompanhar na Linha; abrir o caso | Estado alvo: o plano incluiu sozinho o plano de saúde do nível; auditoria antes da execução; parecer da IA; recibos |
-| 10 a 15 | Cenários, "Promoção sem interstício"; trocar persona para HRBP; Aprovações | A regra diz quem aprova; justificativa obrigatória; próximo passo explícito |
+| 10 a 15 | Cenários, "Promoção sem interstício"; trocar persona para HRBP; Aprovações | A regra diz quem aprova; justificativa obrigatória; próximo passo explícito. Com o PR #9 mergeado, mostrar a aprovação em lote com filtro pela recomendação do agente |
 | 15 a 18 | Cenários, "Desligamento de gestante" | Bloqueio pela estabilidade antes de qualquer sistema ser tocado |
 | 18 a 22 | Contratos, política, mudar o interstício de 12 para 4 meses, salvar nova versão; repetir o cenário | Mudança de regra sem projeto de TI, com versão e vigência |
 | 22 a 26 | Cenários, "Inclusão no programa de alto potencial"; Vigências, avançar "+1 ano" | Programas com prazo vencem sozinhos e retiram o que concediam |

@@ -53,6 +53,8 @@ Cada regra diz se é **bloqueante** (proíbe), **excecionável** (proíbe até a
 
 Quando uma regra excecionável falha, o caso para e aparece na fila da pessoa indicada pela regra: HRBP, Jurídico, Compliance, Auditoria, Comitê de remuneração ou o gestor imediato real do colaborador. A pessoa vê a regra, o valor, a recomendação da IA e decide com justificativa obrigatória. O caso diz sempre o **próximo passo**: o que acontece agora, quem precisa agir e o que aprovar ou rejeitar provoca.
 
+Pendente de merge (o [PR #9](https://github.com/fernandopaixao/new-hr-lab/pull/9), ainda não mergeado): **aprovação em lote**. Na tela Aprovações, a pessoa filtra as pendências por tipo de aprovação, tipo de evento e recomendação do agente, seleciona as filtradas que pode decidir e aprova ou rejeita todas com uma única justificativa. Antes de confirmar, um diálogo mostra quantas o agente recomenda reprovar e o que a decisão provoca. Cada item continua registrado individualmente, com a persona e o número do lote.
+
 ### 4. Estado alvo: a pessoa fica como o cargo exige
 
 Cada cargo descreve como deve estar quem o ocupa. Numa promoção para coordenador, por exemplo, o plano inclui sozinho a gratificação de 55%, a jornada de 8 horas, o celular corporativo, o plano de saúde do nível e a trilha de liderança. Na reversão de cargo de confiança, retira a gratificação, volta a 6 horas e revoga os acessos. A mesma comparação aponta quem já está fora do padrão hoje (tela Colaboradores, conformidade).

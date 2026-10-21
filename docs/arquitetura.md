@@ -138,6 +138,7 @@ O laboratório foi dimensionado para milhares de casos. Os pontos que mudariam e
 | Auditar antes de alterar | O plano é aplicado em simulação e auditado antes da execução | [ADR 0018](adr/0018-auditoria-antes-da-execucao.md) |
 | Falhar de forma reversível | Saga com compensação por snapshot; reversão completa após conferência reprovada | [ADR 0008](adr/0008-saga-com-compensacao.md) |
 | Tudo explicado | Cada decisão vai para o log com a explicação; o mesmo log alimenta painel, índice e perguntas | [ADR 0011](adr/0011-log-de-decisoes-explicado.md), [ADR 0015](adr/0015-estrategia-de-visibilidade.md) |
+| Lote sem atalho (PR #9, pendente) | `decide_batch` chama a decisão unitária para cada item, então alçada, validação e log são os mesmos de uma decisão avulsa; um resumo `APROVACAO_LOTE` liga os itens | ADR 0026 (PR #9) |
 | Lógica pura testável | `engine.py`, `facts.py`, `shelf.py` e `expr.py` sem I/O | seção [Módulos do backend](#módulos-do-backend) |
 | Provedor de IA trocável | Toda chamada passa por `llm.py`; motores Qwen e JEV por `engines.py`. Pendente de merge (PR #8): `budget.py` confere o teto de gastos opcional antes de cada chamada externa, e o bloqueio é tratado como IA indisponível | [ADR 0021](adr/0021-provedores-de-llm-na-nuvem.md), [ADR 0024](adr/0024-motor-jev-e-painel-de-desempenho.md), ADR 0025 (PR #8) |
 

@@ -326,6 +326,14 @@ footer { border-top: 1px solid var(--border); margin-top: 40px; padding: 20px 0 
     </div>
   </div>
 
+  <div class="card" style="margin-top:14px">
+    <h3>Aprovação em lote <span class="tag warn">PR #9, pendente de merge</span></h3>
+    <div class="grid g3" style="gap:10px">
+      <div class="small"><b>Filtrar e selecionar.</b> Por tipo de aprovação, tipo de evento e recomendação do agente; "Selecionar as N filtradas que posso decidir".</div>
+      <div class="small"><b>Confirmar com contexto.</b> Justificativa única; o diálogo mostra quantas o agente recomenda reprovar e o que a decisão provoca.</div>
+      <div class="small"><b>Sem atalho na alçada.</b> Cada item passa pela decisão unitária e vai para o log com a persona e o número do lote; item fora da alçada falha sozinho, sem parar os demais.</div>
+    </div>
+  </div>
   <div class="aud-note" data-aud="negocio"><b>Negócio</b>Repare na explicação de cada regra ("5 meses no cargo; mínimo de 12") e em quem precisa agir. Ninguém precisa investigar por que um caso parou.</div>
   <div class="aud-note" data-aud="tecnico"><b>Times técnicos</b>No laboratório, cada transição é uma mensagem num stream do Redis; o caso é um documento JSON em <code>hr:case:{id}</code>; cada linha do log é uma entrada em <code>hr:log</code>, também gravada em <code>audit-log.jsonl</code>.</div>
   <div class="aud-note" data-aud="seguranca"><b>Segurança</b>A aprovação só aceita as personas listadas na regra e exige justificativa. Tente aprovar com a persona errada ou sem justificativa.</div>
@@ -517,6 +525,7 @@ footer { border-top: 1px solid var(--border); margin-top: 40px; padding: 20px 0 
         <li><b>Auditar antes de alterar.</b> Simulação sobre uma cópia do colaborador.</li>
         <li><b>Falhar de forma reversível.</b> Saga com compensação por snapshot.</li>
         <li><b>Tudo explicado.</b> O mesmo log alimenta painel, índice e perguntas.</li>
+        <li><b>Lote sem atalho.</b> A aprovação em lote (PR #9, pendente) reutiliza a decisão unitária item a item.</li>
         <li><b>Lógica pura testável.</b> <code>engine</code>, <code>facts</code>, <code>shelf</code> e <code>expr</code> sem I/O.</li>
         <li><b>Provedor de IA trocável.</b> Toda chamada passa por <code>llm.py</code>.</li>
       </ul>
@@ -550,7 +559,7 @@ footer { border-top: 1px solid var(--border); margin-top: 40px; padding: 20px 0 
         <li>Avaliador de expressões com lista branca, sem <code>eval</code></li>
         <li>Auditoria antes da execução e conferência final depois</li>
         <li>Saga, idempotência, trava e versão do cadastro</li>
-        <li>Aprovação só pelas personas da regra, com justificativa</li>
+        <li>Aprovação só pelas personas da regra, com justificativa; no lote (PR #9, pendente), cada item é validado e registrado individualmente</li>
         <li>Log append-only com ator; prompt e resposta da IA gravados</li>
         <li>Chave de API fora do Redis, do log e da API; arquivo 0600</li>
         <li>Prompt do auditor sem nome e CPF</li>

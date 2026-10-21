@@ -85,6 +85,18 @@ O [PR #8](https://github.com/fernandopaixao/new-hr-lab/pull/8), ainda não incor
 | Teste da chave | Fluxo de cinco etapas (chave, teto, conexão, modelo, chamada de teste) que mostra requisições, tempo, tokens e custo, sem expor a chave |
 | Risco residual | Sem autenticação, qualquer pessoa que alcance a interface pode mudar ou zerar o teto (`PUT /api/gastos/teto`, `POST /api/gastos/zerar`); em produção, essas rotas devem ser só de administrador |
 
+### Pendente de merge: aprovação em lote (PR #9)
+
+O [PR #9](https://github.com/fernandopaixao/new-hr-lab/pull/9), ainda não incorporado, permite decidir várias aprovações de uma vez (`POST /api/approvals/batch`, até 200 itens). A alçada e a trilha não são relaxadas:
+
+| Controle | Como funciona no lote |
+| --- | --- |
+| Alçada | Cada item passa pela mesma decisão unitária: só entra o que a persona ativa pode decidir. Um item fora da alçada falha sozinho (`FALHOU`) e não interrompe os demais. |
+| Justificativa | Obrigatória, validada antes de qualquer decisão; a mesma justificativa vale para todos os itens. |
+| Trilha | Cada aprovação gera o seu `APROVACAO_DECIDIDA` com a persona e o campo `lote`; um `APROVACAO_LOTE` resume o resultado de cada item (`DECIDIDA`, `IGNORADA`, `FALHOU`). |
+| Parecer da IA | O diálogo de confirmação mostra quantas o agente recomenda reprovar antes de a pessoa confirmar. |
+| Risco residual | Uma justificativa genérica para muitos casos dilui a explicação individual; sem login, a persona continua sendo escolhida pelo usuário. Em produção, vale limitar o lote por tipo de aprovação (por exemplo, sem lote para revisões da conferência final) e exigir SSO. |
+
 ## Lacunas conhecidas (aceitas no laboratório)
 
 | Lacuna | Risco | Por que foi aceita | O que fazer em produção |

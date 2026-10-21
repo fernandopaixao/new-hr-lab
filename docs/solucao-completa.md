@@ -2,7 +2,7 @@
 
 Documento único com tudo o que é relevante para apresentar, avaliar, operar e evoluir a solução. Serve a áreas de negócio, times técnicos, segurança e arquitetura. Os documentos específicos da pasta `docs/` aprofundam cada tema e estão indicados em cada seção.
 
-Estado descrito: branch principal do repositório em 21/10/2026, com as entregas de 1 a 7 incorporadas (linha de produção, visibilidade e perguntas, instaladores, auditoria antes da execução, hierarquia, provedores de IA na nuvem com assistente inicial, eventos com vigência, motor JEV e painel de desempenho). O PR #8 (assistente "Ollama, externo ou sem IA", teste da API em cinco etapas e teto de gastos opcional com LLM externa) ainda não foi incorporado e está descrito à parte, na [seção 18](#pendente-de-merge-pr-8).
+Estado descrito: branch principal do repositório em 21/10/2026, com as entregas de 1 a 7 incorporadas (linha de produção, visibilidade e perguntas, instaladores, auditoria antes da execução, hierarquia, provedores de IA na nuvem com assistente inicial, eventos com vigência, motor JEV e painel de desempenho). Os PRs #8 (assistente "Ollama, externo ou sem IA", teste da API em cinco etapas e teto de gastos opcional com LLM externa) e #9 (aprovação em lote) ainda não foram incorporados e estão descritos à parte, na [seção 18](#pendente-de-merge-pr-8).
 
 ## Sumário
 
@@ -280,6 +280,8 @@ A tela Prateleira executa uma operação avulsa ou em simulação. Detalhes: [pr
 - **Auditoria interna da conferência final**: confirmar a reprovação reverte a execução.
 
 Regras de decisão: só personas listadas em `aprovadores`; decisão APROVAR ou REJEITAR; justificativa com pelo menos 5 caracteres; uma aprovação decidida não volta; a rejeição de uma cancela as demais pendentes do caso. Tudo vai para o log.
+
+Pendente de merge (PR #9): aprovação em lote, com filtros, seleção, justificativa única e confirmação que mostra quantas o agente recomenda reprovar. Veja a [seção 18](#pendente-de-merge-pr-9).
 
 ### Hierarquia
 
@@ -567,7 +569,7 @@ Rotas agrupadas (detalhes em [api.md](api.md)):
 | Eventos e casos | `POST /api/events`, `GET /api/cases`, `GET /api/cases/{id}`, `POST /api/cases/{id}/release`, `/retry`, `/cancel`, `/debug` |
 | Linha e controle | `GET/POST /api/control`, `GET /api/stats`, `GET /api/stream` (SSE), `GET /api/meta`, `GET /api/health` |
 | Vigências e relógio | `GET /api/clock`, `POST /api/clock/advance`, `PUT /api/clock`, `GET /api/vigencias`, `POST /api/vigencias/tick` |
-| Aprovações | `GET /api/approvals`, `POST /api/approvals/{id}/decide` |
+| Aprovações | `GET /api/approvals`, `POST /api/approvals/{id}/decide`; pendente (PR #9): `POST /api/approvals/batch` |
 | Colaboradores | `GET /api/employees`, `GET/PUT /api/employees/{id}`, `POST /api/employees/generate`, `POST /api/employees/{id}/drift` |
 | Contratos e prateleira | `GET /api/contracts`, `GET /api/contracts/{codigo}`, `POST /api/contracts/validate`, `POST /api/contracts`, `DELETE /api/contracts/{codigo}/versions/{versao}`, `POST /api/contracts/reset`, `GET /api/shelf`, `POST /api/shelf/{codigo}/invoke` |
 | Cenários | `GET /api/scenarios`, `POST /api/scenarios/{id}/generate`, `POST /api/scenarios/burst`, `POST/GET /api/scenarios/suite`, `GET /api/scenarios/suite/{id}` |
@@ -606,6 +608,7 @@ A persona é informada no cabeçalho `X-Persona`.
 | 0023 | Eventos com vigência, agenda derivada e relógio simulado |
 | 0024 | Motor JEV ao lado do Qwen e painel de desempenho dos agentes |
 | 0025 | Teto de gastos com LLM externa (no PR #8, pendente de merge) |
+| 0026 | Aprovação em lote (no PR #9, pendente de merge) |
 
 Cada ADR traz contexto, decisão, alternativas e consequências: [adr/README.md](adr/README.md).
 
@@ -627,6 +630,16 @@ Ainda não incorporado à branch principal: o [PR #8](https://github.com/fernand
 - **Assistente de primeiro acesso "Ollama, externo ou sem IA".** No passo 2, a pessoa escolhe Ollama, um provedor externo (Anthropic, Google Gemini ou OpenAI) ou nenhuma IA.
 - **Teste da API em cinco etapas.** Chave, teto, conexão, modelo e chamada de teste, mostrando as requisições feitas, o tempo, os tokens, o custo do teste e em qual etapa o teste parou.
 - **Teto de gastos com LLM externa (opcional).** O preço por modelo e o teto são configurações opcionais, não etapas obrigatórias do assistente. Quando configurados, cada chamada externa (agentes, perguntas, embeddings e o teste do assistente) é precificada pelos tokens informados pelo provedor e por uma tabela de preço por modelo (US$ por milhão de tokens, editável). Os contadores ficam no Redis, por período (`MENSAL` ou `TOTAL`), provedor e modelo, e sobrevivem ao reinício do laboratório. Antes de cada chamada, `llm.py` confere o teto: se o gasto mais a estimativa do prompt passar do limite, a chamada não é enviada, os casos ficam em "Aguardando agente de IA", uma faixa vermelha "Chamadas externas bloqueadas" aparece em todas as telas e o primeiro bloqueio de cada episódio grava `GASTOS_LLM` no log. Há aviso por percentual do teto, painel em Configurações (medidor, gasto por modelo, últimas chamadas, zerar contador), selo de gasto no topo e as rotas `GET /api/gastos`, `PUT /api/gastos/teto`, `PUT /api/gastos/precos` e `POST /api/gastos/zerar`. Registrado na ADR 0025 do mesmo PR.
+
+### Pendente de merge: PR #9
+
+O [PR #9](https://github.com/fernandopaixao/new-hr-lab/pull/9), em revisão, traz a **aprovação em lote** na tela Aprovações.
+
+- Filtros por tipo de aprovação, tipo de evento e recomendação do agente; caixa de seleção em cada pendente que a persona ativa pode decidir; "Selecionar as N filtradas que posso decidir"; justificativa única; Aprovar ou Rejeitar selecionadas.
+- Diálogo de confirmação com quantas o agente recomenda reprovar, o que a decisão provoca em cada estágio e, na rejeição, o aviso das outras aprovações do mesmo caso.
+- `POST /api/approvals/batch` com `ids`, `decisao`, `justificativa` e `persona` (até 200 itens).
+- `Pipeline.decide_batch` chama a decisão unitária para cada item: alçada, validação e log individuais (`APROVACAO_DECIDIDA` com o campo `lote`), mais um `APROVACAO_LOTE` com o resultado de cada item (`DECIDIDA`, `IGNORADA`, `FALHOU`). Uma falha por alçada não interrompe os demais itens. O histórico mostra o número do lote.
+- Registrado na ADR 0026.
 
 ### Caminho para produção
 
@@ -701,6 +714,7 @@ Glossário completo: [glossario.md](glossario.md).
 | Painel e métricas | Leitura | `facts.py`, `api.py` | Visão, `/api/metrics` | rajada |
 | Embeddings e perguntas | Leitura | `embeddings.py`, `indexer.py`, `ask.py` | Perguntar | após a suíte |
 | Provedor de IA trocável | Agentes | `llm.py`, `apikeys.py` | Assistente, Configurações | qualquer |
+| Aprovação em lote (PR #9, pendente) | Aprovações de exceção e revisões | `pipeline.decide_batch` | Aprovações (filtros e seleção) | várias exceções pendentes |
 | Teto de gastos com LLM externa (PR #8, pendente) | Antes de cada chamada externa | `budget.py`, `llm.py` | Configurações, faixa vermelha no topo | teto baixo com provedor externo |
 | Motores Qwen e JEV | Agentes | `engines.py`, `metrics.py` | Desempenho | comparação ligada |
 

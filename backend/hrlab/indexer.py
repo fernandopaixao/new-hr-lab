@@ -106,6 +106,7 @@ class Indexer:
     def __init__(self, store: Store, name: str | None = None):
         self.store = store
         self.name = name or f"{socket.gethostname()}-{os.getpid()}"
+        llm.use_ledger(store)
 
     async def ensure_group(self) -> None:
         try:

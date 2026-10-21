@@ -274,7 +274,7 @@ async def answer(store: Store, question: str, facts: list[dict], event_types: li
     # 1. interpretation
     try:
         prompt = f"Catálogo:\n{dumps(cat)}\n\nPergunta: {question}"
-        parsed, meta = await chat_json(settings, ROUTER_SYSTEM, prompt, ROUTER_SCHEMA, model=model, max_tokens=300)
+        parsed, meta = await chat_json(settings, ROUTER_SYSTEM, prompt, ROUTER_SCHEMA, model=model, max_tokens=300, origem="perguntas")
         query = sanitize_query(parsed)
         trace["interpretacao"] = {"agente": prov, "modelo": model, "duracao_ms": meta["duracao_ms"], "bruta": meta["resposta_bruta"]}
     except (AgentUnavailable, json.JSONDecodeError) as exc:
@@ -316,7 +316,7 @@ async def answer(store: Store, question: str, facts: list[dict], event_types: li
     else:
         try:
             prompt = f"Pergunta: {question}\n\nEvidências:\n{dumps(evidence)}"
-            parsed, meta = await chat_json(settings, ANSWER_SYSTEM, prompt, ANSWER_SCHEMA, model=model, max_tokens=700)
+            parsed, meta = await chat_json(settings, ANSWER_SYSTEM, prompt, ANSWER_SCHEMA, model=model, max_tokens=700, origem="perguntas")
             result = {"resposta": str(parsed.get("resposta") or ""), "casos_citados": [str(c) for c in parsed.get("casos_citados") or []],
                       "confianca": parsed.get("confianca"), "limitacoes": str(parsed.get("limitacoes") or "")}
             trace["resposta"] = {"agente": prov, "modelo": model, "duracao_ms": meta["duracao_ms"], "bruta": meta["resposta_bruta"]}

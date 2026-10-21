@@ -108,7 +108,11 @@ Veja a [ADR 0023](adr/0023-eventos-com-vigencia.md).
 | `POST /api/agent/cache/clear` | - | Limpa o cache de respostas. |
 | `GET /api/setup` | - | Estado do assistente de configuração, provedores, situação das chaves (sem o valor), configurações e ambiente. |
 | `POST /api/setup/test-jev` | `{modelo?, valores?}` | Testa o modelo JEV sem salvar: confere se está instalado e faz uma decisão mínima em `/v1/systemone`. |
-| `POST /api/setup/test` | `{provedor, modelo, chave?, valores?}` | Testa um provedor com os valores digitados, sem salvar nada: lista os modelos e faz uma chamada mínima. Devolve `ok`, `etapa` e `erro`. |
+| `POST /api/setup/test` | `{provedor, modelo, chave?, valores?}` | Testa um provedor com os valores digitados, sem salvar nada: confere chave e teto de gastos, lista os modelos e faz uma chamada mínima (cobrada). Devolve `ok`, `etapa` (a que falhou), `erro`, `etapas` (estado e detalhe de cada uma), tokens e `custo_usd`. |
+| `GET /api/gastos?recentes=30` | | Gasto do período, teto, restante, se está bloqueado e por quê, gasto por modelo, últimas chamadas cobradas e a tabela de preços. |
+| `PUT /api/gastos/teto` | `{spend_cap_usd?, spend_period?, spend_alert_percent?}` | Altera o teto (com log). |
+| `PUT /api/gastos/precos` | `{provedor, modelo, entrada?, saida?}` | Preço do modelo em US$ por milhão de tokens; sem valores, volta ao da tabela. |
+| `POST /api/gastos/zerar` | | Zera o contador do período atual (com log); o histórico de chamadas fica. |
 | `PUT /api/setup/key` | `{provedor, chave}` | Salva a chave de API do provedor (chave vazia remove). Devolve só a situação das chaves. |
 | `POST /api/setup/complete` | `{valores}` ou `{pulado: true}` | Grava as configurações (com log) e marca o assistente como concluído. |
 | `POST /api/reset` | `{colaboradores, tamanho, semente, desvio_percentual}` | Limpa casos, aprovações, filas, log e índice; opcionalmente gera um novo time. |

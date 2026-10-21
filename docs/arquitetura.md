@@ -125,3 +125,75 @@ A regra de dependência é simples: `engine.py`, `facts.py`, `shelf.py` e `expr.
 ## Escala
 
 O laboratório foi dimensionado para milhares de casos. Os pontos que mudariam em produção estão descritos nas decisões arquiteturais: armazenamento de documentos (ADR 0002), índice vetorial (ADR 0016), autenticação (ADR 0009) e observabilidade com OpenTelemetry (ADR 0015).
+
+## Princípios de arquitetura
+
+| Princípio | Como aparece no código | Decisão |
+| --- | --- | --- |
+| Uma linha, muitos processos | Os seis estágios são os mesmos para qualquer evento; o que muda é o contrato de processo | [ADR 0001](adr/0001-linha-de-producao-por-estagios.md) |
+| Comportamento em dados, não em código | Normas, políticas, cargos e processos são contratos YAML versionados com vigência | [ADR 0003](adr/0003-contratos-versionados.md) |
+| Plano derivado do estado alvo | O planejamento compara o estado atual com o que o cargo e a norma exigem e acrescenta o que falta | [ADR 0005](adr/0005-prateleira-e-plano-derivado.md) |
+| Operações desacopladas | A prateleira declara parâmetros, campos alterados e compensação; qualquer processo reutiliza | ADR 0005 |
+| Decisão determinística, IA auditora | Regras decidem; o agente recomenda e a divergência vai para pessoas | [ADR 0006](adr/0006-regras-decidem-ia-audita.md) |
+| Auditar antes de alterar | O plano é aplicado em simulação e auditado antes da execução | [ADR 0018](adr/0018-auditoria-antes-da-execucao.md) |
+| Falhar de forma reversível | Saga com compensação por snapshot; reversão completa após conferência reprovada | [ADR 0008](adr/0008-saga-com-compensacao.md) |
+| Tudo explicado | Cada decisão vai para o log com a explicação; o mesmo log alimenta painel, índice e perguntas | [ADR 0011](adr/0011-log-de-decisoes-explicado.md), [ADR 0015](adr/0015-estrategia-de-visibilidade.md) |
+| Lote sem atalho (PR #9, pendente) | `decide_batch` chama a decisão unitária para cada item, então alçada, validação e log são os mesmos de uma decisão avulsa; um resumo `APROVACAO_LOTE` liga os itens | ADR 0026 (PR #9) |
+| Lógica pura testável | `engine.py`, `facts.py`, `shelf.py` e `expr.py` sem I/O | seção [Módulos do backend](#módulos-do-backend) |
+| Provedor de IA trocável | Toda chamada passa por `llm.py`; motores Qwen e JEV por `engines.py`. Pendente de merge (PR #8): `budget.py` confere o teto de gastos opcional antes de cada chamada externa, e o bloqueio é tratado como IA indisponível | [ADR 0021](adr/0021-provedores-de-llm-na-nuvem.md), [ADR 0024](adr/0024-motor-jev-e-painel-de-desempenho.md), ADR 0025 (PR #8) |
+
+## Visão de contexto
+
+```
+   Operador, HRBP, Jurídico,           +-----------------------------+          Provedores de IA
+   Compliance, Auditoria, Comitê ----->|                             |-------> Ollama (padrão, local ou rede)
+   (personas na interface)             |     Laboratório Novo RH     |-------> Claude, OpenAI, Gemini (opcional)
+                                       |                             |
+   Prometheus (opcional) <-------------|  linha de produção de RH    |
+                                       |  contratos, prateleira,     |  Sistemas de destino (simulados pela prateleira):
+   Gerador de cenários e de time ----->|  agentes, log, painel       |-------> cadastro, folha, ponto, benefícios, IAM,
+                                       +-----------------------------+          patrimônio, jurídico, SST, treinamento,
+                                                                                eSocial, comunicação
+```
+
+Em produção, cada grupo da prateleira (`CADASTRO`, `FOLHA`, `PONTO`, `BENEFICIOS`, `IAM`, `PATRIMONIO`, `JURIDICO`, `SST`, `TREINAMENTO`, `ESOCIAL`, `COMUNICACAO`) vira um adaptador para o sistema real, mantendo o contrato da operação (parâmetros, campos alterados, compensação, recibo).
+
+## Atributos de qualidade
+
+| Atributo | Como é atendido | Como medir no laboratório |
+| --- | --- | --- |
+| Correção | Regras determinísticas, estado projetado auditado, conferência final, 54 cenários com resultado esperado, 61 testes unitários | Suíte completa na tela Cenários; `pytest` |
+| Explicabilidade | Explicação por regra, por operação escolhida ou descartada, por aprovação e por parecer; próximo passo em cada fase | Detalhe do caso, tela Log |
+| Auditabilidade | Log append-only, prompt e resposta da IA gravados, recibos com protocolo | Exportação JSONL |
+| Resiliência | Filas por estágio, retomada após queda de worker, espera pela IA, saga, idempotência | Injeção de falhas, `docker compose restart worker` |
+| Consistência | Trava por colaborador, versão do cadastro, replanejamento, snapshot na conferência | Cenário `eventos_concorrentes` |
+| Escalabilidade | Workers horizontais por grupo de consumidores; API sem estado | `--scale worker=N` e rajada de eventos |
+| Modificabilidade | Contrato novo ou operação nova sem mudar a linha; provedor de IA trocável | Editor de contratos; [prateleira](prateleira.md) |
+| Observabilidade | Painel, métricas Prometheus, desempenho por motor de IA, rastro por caso | Telas Visão e Desempenho, `GET /api/metrics` |
+| Portabilidade | Docker Compose; instaladores para Linux, macOS e Windows | `scripts/install.*` |
+| Custo e privacidade da IA | Ollama local por padrão, cache de 24 horas, semáforo de concorrência | Tela Desempenho |
+
+## Trade-offs aceitos
+
+| Escolha | Ganho | Custo | Quando rever |
+| --- | --- | --- | --- |
+| Redis para tudo | Um único componente de infraestrutura, simples de subir | Sem consultas relacionais; memória limita o volume; índice vetorial em memória na API | Acima de dezenas de milhares de casos ou com requisitos de retenção longa |
+| Uma fila por estágio | Pausa, breakpoint e escala por estação | Mais mensagens por caso | Se a latência por caso for crítica |
+| Contratos em YAML com expressões | O negócio lê e altera as regras | Expressões ainda pedem cuidado; não há editor visual de regra | Ao abrir a edição para áreas de negócio em produção |
+| IA síncrona no estágio | Parecer disponível antes da decisão | Estágio de auditoria é o gargalo | Com volume alto: modelo menor, GPU, JEV ou cache |
+| Personas sem login | Demonstração da governança sem infraestrutura de identidade | Sem segurança de acesso | Antes de qualquer uso real ([seguranca.md](seguranca.md)) |
+| Fatos calculados por requisição | Painel sempre igual ao log | Custo cresce com o volume | Com milhares de casos por dia: banco analítico alimentado pelo log |
+
+## Caminho para produção
+
+| Tema | Laboratório | Produção sugerida |
+| --- | --- | --- |
+| Identidade | Persona escolhida na interface | SSO (OIDC), papéis no provedor de identidade, autorização por rota |
+| Armazenamento | Redis com AOF | Banco transacional para casos, cadastro e contratos; Redis ou Kafka para filas; armazenamento imutável para o log |
+| Mensageria | Redis Streams, sem `XAUTOCLAIM` | Streams com reivindicação de pendentes, ou Kafka com partição por colaborador |
+| Integrações | Prateleira simulada | Adaptadores por sistema com idempotência, timeout, retentativa e compensação real |
+| Índice vetorial | Matriz numpy em memória | Banco vetorial (pgvector, Redis Stack, OpenSearch) |
+| Observabilidade | Painel próprio e Prometheus | OpenTelemetry com `case_id` como trace id; Alertmanager com as condições do painel |
+| IA | Ollama local, nuvem opcional | Modelo local em GPU dedicada ou provedor com contrato de não retenção; teto de gasto; avaliação contínua de concordância |
+| Governança de contratos | Qualquer persona salva nova versão | Aprovação de duas pessoas, ambiente de homologação, suíte de cenários como portão de publicação |
+| Implantação | Docker Compose | Kubernetes ou serviço gerenciado; CI com testes, análise estática e varredura de imagens |

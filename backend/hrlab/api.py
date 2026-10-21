@@ -13,8 +13,8 @@ from fastapi import Body, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, StreamingResponse
 
-from . import agent, apikeys, ask, clock, embeddings as emb, engine, facts as factsmod, indexer, llm, logbook as log, metrics as agent_metrics, migrations, shelf, vigencia
-from .config import DEFAULT_SETTINGS, REDIS_URL
+from . import agent, apikeys, ask, budget, clock, embeddings as emb, engine, facts as factsmod, indexer, llm, logbook as log, metrics as agent_metrics, migrations, shelf, vigencia
+from .config import DEFAULT_SETTINGS, REDIS_URL, coerce_settings
 from .context import Ctx
 from .contracts import ContractError, ContractRepo, from_yaml, to_yaml, validate
 from .domain import (
@@ -29,6 +29,7 @@ from .store import LOG_STREAM, P, UPDATES_CHANNEL, Store, case_summary, new_id, 
 store = Store()
 pipeline = Pipeline(store)
 repo = ContractRepo(store)
+ledger = llm.use_ledger(store)
 BACKGROUND: set[asyncio.Task] = set()
 
 EVENT_TEMPLATES: dict[str, dict] = {
@@ -178,6 +179,7 @@ async def get_setup() -> dict:
         "estado": await store.get_json(SETUP_KEY) or {"concluido": False},
         "provedores": llm.PROVIDERS, "provedores_embedding": llm.EMBEDDING_PROVIDERS, "chaves": apikeys.status(), "motores": ENGINES,
         "valores": await store.settings(), "padroes": DEFAULT_SETTINGS,
+        "gastos": await ledger.status(await store.settings()), "precos": budget.price_table(await ledger.overrides()),
         "ambiente": {"redis": _redis_label(), "redis_versao": info.get("redis_version"),
                      "colaboradores": await store.r.scard(f"{P}:employees"), "casos": await store.r.zcard(f"{P}:cases")},
     }
@@ -189,10 +191,59 @@ async def setup_test(body: dict = Body(...)) -> dict:
     prov = str(body.get("provedor") or "")
     if prov not in llm.PROVIDERS:
         raise HTTPException(400, f"provedor desconhecido: {prov}")
-    settings = {**await store.settings(), **{k: v for k, v in (body.get("valores") or {}).items() if k in DEFAULT_SETTINGS}}
+    try:
+        typed = coerce_settings({k: v for k, v in (body.get("valores") or {}).items() if k in DEFAULT_SETTINGS})
+    except (TypeError, ValueError) as exc:
+        raise http_error(exc) from exc
+    settings = {**await store.settings(), **typed}
     base_url = settings["ollama_base_url"] if prov == "ollama" else (settings["openai_base_url"] if prov == "openai" else None)
     model = str(body.get("modelo") or llm.active_model(settings, prov))
     return await llm.test_connection(settings, prov, model, api_key=(body.get("chave") or None), base_url=base_url)
+
+
+# ------------------------------------------------- spending cap (external LLMs)
+@app.get("/api/gastos")
+async def get_spend(recentes: int = 30) -> dict:
+    settings = await store.settings()
+    return {**await ledger.status(settings, recent=max(0, min(recentes, 500))), "precos": budget.price_table(await ledger.overrides()),
+            "provedor": llm.provider(settings), "modelo": llm.active_model(settings),
+            "preco_modelo": budget.price_for(llm.provider(settings), llm.active_model(settings), await ledger.overrides())
+            if budget.is_external(llm.provider(settings)) else None}
+
+
+@app.put("/api/gastos/teto")
+async def put_spend_cap(body: dict = Body(...), x_persona: str = Header("OPERADOR")) -> dict:
+    patch = {k: body[k] for k in ("spend_cap_usd", "spend_period", "spend_alert_percent") if k in body}
+    await apply_settings(patch, x_persona, "Teto de gastos alterado")
+    return await get_spend()
+
+
+@app.put("/api/gastos/precos")
+async def put_spend_price(body: dict = Body(...), x_persona: str = Header("OPERADOR")) -> dict:
+    """Edits (or, without values, restores) the price of one model, in US$ per million tokens."""
+    prov, model = str(body.get("provedor") or ""), str(body.get("modelo") or "").strip()
+    if prov not in budget.EXTERNAL or not model:
+        raise HTTPException(400, "informe um provedor externo (anthropic, openai ou gemini) e o modelo")
+    try:
+        entrada = None if body.get("entrada") in (None, "") else float(body["entrada"])
+        saida = None if body.get("saida") in (None, "") else float(body["saida"])
+        await ledger.set_price(prov, model, entrada, saida)
+    except (TypeError, ValueError) as exc:
+        raise http_error(exc) from exc
+    what = f"US$ {entrada:g} entrada e US$ {saida:g} saída por milhão de tokens" if entrada is not None and saida is not None else "preço da tabela restaurado"
+    await log.write(store, log.GASTOS, f"Preço de {prov} {model}: {what}.", ator=f"persona:{x_persona}",
+                    dados={"provedor": prov, "modelo": model, "entrada": entrada, "saida": saida})
+    return await get_spend()
+
+
+@app.post("/api/gastos/zerar")
+async def reset_spend(x_persona: str = Header("OPERADOR")) -> dict:
+    settings = await store.settings()
+    before = await ledger.reset_period(settings)
+    await log.write(store, log.GASTOS, f"Contador de gastos zerado ({budget.period_label(settings)}); estava em {budget.usd(before)}.",
+                    ator=f"persona:{x_persona}", dados={"gasto_anterior_usd": before})
+    await agent.check_health(store, settings)
+    return await get_spend()
 
 
 @app.post("/api/setup/test-jev")
@@ -861,6 +912,7 @@ async def stats() -> dict:
         "finalizados_ultimo_minuto": last_min,
         "controle": await store.control(),
         "relogio": await clock.state(store),
+        "gastos": await ledger.status(await store.settings()),
     }
 
 

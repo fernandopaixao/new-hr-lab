@@ -82,7 +82,7 @@ Cada entrada tem `tipo`, `ts`, `case_id`, `colaborador_id`, `estagio`, `ator` (s
 | Regras | `REGRA_AVALIADA`, `DECISAO_ELEGIBILIDADE`, `AUDITORIA` |
 | Plano e execução | `PLANO_GERADO`, `OPERACAO_ESCOLHIDA`, `OPERACAO_DESCARTADA`, `OPERACAO_EXECUTADA`, `OPERACAO_FALHOU`, `COMPENSACAO` |
 | Agente | `AGENTE_RECOMENDACAO`, `AGENTE_INDISPONIVEL` |
-| Pessoas | `APROVACAO_SOLICITADA`, `APROVACAO_DECIDIDA` |
+| Pessoas | `APROVACAO_SOLICITADA`, `APROVACAO_DECIDIDA`, `APROVACAO_LOTE` (resumo de uma decisão em lote; cada aprovação do lote também gera o seu `APROVACAO_DECIDIDA`) |
 | Cadastros | `COLABORADOR_ALTERADO`, `CONTRATO_ALTERADO`, `CONFIG_ALTERADA` |
 
 O stream `hr:log` guarda até 200 mil entradas; o arquivo `audit-log.jsonl`, no volume de dados, guarda tudo. A exportação na tela Log gera JSONL com os filtros aplicados.

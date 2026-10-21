@@ -1,0 +1,1121 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Novo RH: demonstração</title>
+<meta name="description" content="Demonstração interativa da arquitetura de operações de RH orientada a eventos: linha de produção, contratos, estado alvo, IA auditora, vigências, arquitetura e segurança.">
+<style>
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #eef1f5;
+  --text: #17202b;
+  --muted: #5b6676;
+  --border: #d8dee6;
+  --accent: #2f5bd3;
+  --accent-soft: #e4ebfb;
+  --ok: #1f7a4d;
+  --ok-soft: #e1f2e9;
+  --warn: #9a6200;
+  --warn-soft: #fbefd9;
+  --bad: #b3261e;
+  --bad-soft: #f9e1df;
+  --info: #5b3fb5;
+  --info-soft: #ece6fa;
+  --shadow: 0 1px 2px rgba(20, 30, 50, .06), 0 4px 16px rgba(20, 30, 50, .05);
+  --radius: 10px;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141b;
+    --surface: #161d26;
+    --surface-2: #1d2631;
+    --text: #e6ebf2;
+    --muted: #9aa6b5;
+    --border: #2a3542;
+    --accent: #7ea2ff;
+    --accent-soft: #1f2b47;
+    --ok: #5cc794;
+    --ok-soft: #173326;
+    --warn: #e3b45c;
+    --warn-soft: #3a2d14;
+    --bad: #f08a82;
+    --bad-soft: #3d1c1a;
+    --info: #b39cff;
+    --info-soft: #2a2245;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 16px rgba(0, 0, 0, .25);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141b;
+  --surface: #161d26;
+  --surface-2: #1d2631;
+  --text: #e6ebf2;
+  --muted: #9aa6b5;
+  --border: #2a3542;
+  --accent: #7ea2ff;
+  --accent-soft: #1f2b47;
+  --ok: #5cc794;
+  --ok-soft: #173326;
+  --warn: #e3b45c;
+  --warn-soft: #3a2d14;
+  --bad: #f08a82;
+  --bad-soft: #3d1c1a;
+  --info: #b39cff;
+  --info-soft: #2a2245;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 16px rgba(0, 0, 0, .25);
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 var(--sans); }
+a { color: var(--accent); }
+code, .mono { font-family: var(--mono); font-size: .9em; }
+h1, h2, h3, h4 { line-height: 1.25; margin: 0 0 .5em; }
+h2 { font-size: 1.45rem; }
+h3 { font-size: 1.08rem; }
+p { margin: 0 0 .8em; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
+
+/* header */
+header.top { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
+.top .wrap { display: flex; align-items: center; gap: 16px; min-height: 56px; flex-wrap: wrap; padding-top: 6px; padding-bottom: 6px; }
+.brand { font-weight: 700; letter-spacing: .2px; display: flex; align-items: center; gap: 8px; }
+.brand .logo { width: 22px; height: 22px; border-radius: 6px; background: var(--accent); display: inline-block; position: relative; }
+.brand .logo::after { content: ""; position: absolute; inset: 6px 4px; border-top: 2px solid var(--surface); border-bottom: 2px solid var(--surface); }
+nav.sections { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
+nav.sections a { text-decoration: none; color: var(--muted); padding: 4px 8px; border-radius: 6px; font-size: .88rem; }
+@media (max-width: 760px) {
+  nav.sections { order: 3; flex: 1 0 100%; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  nav.sections a { white-space: nowrap; }
+  .brand { flex: 1; }
+}
+nav.sections a:hover { background: var(--surface-2); color: var(--text); }
+.theme-btn { border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 6px; padding: 4px 10px; cursor: pointer; font: inherit; font-size: .85rem; }
+
+/* audience */
+.aud-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 14px 0 0; }
+.aud-bar span.lbl { color: var(--muted); font-size: .88rem; margin-right: 4px; }
+.seg { border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 6px 12px; border-radius: 999px; cursor: pointer; font: inherit; font-size: .88rem; }
+.seg[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.aud-note { display: none; border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 8px 12px; border-radius: 0 8px 8px 0; margin: 10px 0; font-size: .92rem; }
+.aud-note b { display: block; font-size: .78rem; text-transform: uppercase; letter-spacing: .6px; color: var(--accent); margin-bottom: 2px; }
+body[data-aud="negocio"] .aud-note[data-aud~="negocio"],
+body[data-aud="tecnico"] .aud-note[data-aud~="tecnico"],
+body[data-aud="seguranca"] .aud-note[data-aud~="seguranca"],
+body[data-aud="arquitetura"] .aud-note[data-aud~="arquitetura"],
+body[data-aud="todos"] .aud-note { display: block; }
+
+/* sections */
+section { padding: 36px 0 8px; scroll-margin-top: 64px; }
+.lead { font-size: 1.08rem; color: var(--muted); max-width: 820px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; }
+.grid { display: grid; gap: 14px; }
+.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 900px) { .g3, .g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .g2, .g3, .g4 { grid-template-columns: minmax(0, 1fr); } }
+.kpi { text-align: left; }
+.kpi .n { font-size: 1.8rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.kpi .l { color: var(--muted); font-size: .88rem; }
+.tag { display: inline-block; font-size: .74rem; padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); margin: 0 4px 4px 0; white-space: nowrap; }
+.tag.ok { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+.tag.warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+.tag.bad { background: var(--bad-soft); color: var(--bad); border-color: transparent; }
+.tag.info { background: var(--info-soft); color: var(--info); border-color: transparent; }
+.tag.acc { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .4px; }
+.tbl-wrap { overflow-x: auto; }
+pre { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; overflow-x: auto; font: 12.5px/1.5 var(--mono); margin: 0; }
+button.btn { border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 7px 14px; border-radius: 8px; cursor: pointer; font: inherit; font-size: .9rem; }
+button.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.btn:disabled { opacity: .5; cursor: not-allowed; }
+select, input[type="text"], textarea { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; max-width: 100%; }
+label { font-size: .88rem; color: var(--muted); }
+.muted { color: var(--muted); }
+.small { font-size: .85rem; }
+
+/* line */
+.line { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+@media (max-width: 760px) { .line { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 420px) { .line { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.stage { position: relative; border: 1px solid var(--border); background: var(--surface); border-radius: 10px; padding: 10px; min-height: 84px; cursor: pointer; transition: border-color .2s, background .2s, transform .2s; }
+.stage .num { font-size: .72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.stage .nm { font-weight: 600; font-size: .95rem; }
+.stage .st { font-size: .76rem; margin-top: 4px; color: var(--muted); }
+.stage.active { border-color: var(--accent); background: var(--accent-soft); transform: translateY(-2px); }
+.stage.ok { border-color: var(--ok); }
+.stage.ok .st { color: var(--ok); }
+.stage.wait { border-color: var(--warn); background: var(--warn-soft); }
+.stage.wait .st { color: var(--warn); }
+.stage.stop, .stage.fail { border-color: var(--bad); background: var(--bad-soft); }
+.stage.stop .st, .stage.fail .st { color: var(--bad); }
+.stage.comp { border-color: var(--info); background: var(--info-soft); }
+.stage.comp .st { color: var(--info); }
+.stage.skip { opacity: .45; }
+.stage.hl { outline: 2px dashed var(--accent); outline-offset: 2px; }
+
+/* simulator */
+.sim { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 14px; }
+@media (max-width: 900px) { .sim { grid-template-columns: minmax(0, 1fr); } }
+.sc-list { display: flex; flex-direction: column; gap: 6px; }
+.sc-btn { text-align: left; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 8px; padding: 8px 10px; cursor: pointer; font: inherit; }
+.sc-btn .t { font-weight: 600; font-size: .92rem; display: block; }
+.sc-btn .d { font-size: .8rem; color: var(--muted); }
+.sc-btn[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.status-pill { font-weight: 600; font-size: .85rem; padding: 3px 10px; border-radius: 999px; background: var(--surface-2); }
+.status-pill.ok { background: var(--ok-soft); color: var(--ok); }
+.status-pill.warn { background: var(--warn-soft); color: var(--warn); }
+.status-pill.bad { background: var(--bad-soft); color: var(--bad); }
+.status-pill.info { background: var(--info-soft); color: var(--info); }
+.detail h4 { margin: 0 0 4px; }
+.detail .sub { margin-top: 12px; font-size: .8rem; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); font-weight: 600; }
+.rule { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; padding: 6px 0; border-bottom: 1px dashed var(--border); font-size: .9rem; }
+.rule:last-child { border-bottom: 0; }
+.rule .mark { font-weight: 700; font-size: .72rem; padding: 1px 6px; border-radius: 4px; align-self: start; margin-top: 2px; }
+.mark.ok { background: var(--ok-soft); color: var(--ok); }
+.mark.bad { background: var(--bad-soft); color: var(--bad); }
+.mark.warn { background: var(--warn-soft); color: var(--warn); }
+.next { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: 8px; padding: 10px 12px; font-size: .92rem; }
+.next b { color: var(--accent); }
+.log { font: 12px/1.5 var(--mono); max-height: 260px; overflow: auto; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+.log div { padding: 2px 0; border-bottom: 1px solid var(--border); }
+.log div:last-child { border-bottom: 0; }
+.log .tp { color: var(--accent); font-weight: 600; }
+.approval { border: 1px solid var(--warn); background: var(--warn-soft); border-radius: 8px; padding: 12px; margin-top: 12px; }
+.approval .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; margin-top: 8px; }
+.approval .row > div { display: flex; flex-direction: column; gap: 4px; }
+.approval textarea { width: 100%; min-height: 54px; }
+.err { color: var(--bad); font-size: .86rem; margin-top: 6px; min-height: 1.2em; }
+
+/* concepts */
+.filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.concept { display: flex; flex-direction: column; gap: 6px; }
+.concept h3 { margin: 0; }
+.concept .meta { font-size: .84rem; color: var(--muted); }
+.concept .meta b { color: var(--text); font-weight: 600; }
+.concept.dim { opacity: .35; }
+.chip-stage { cursor: pointer; }
+
+/* widgets */
+.range-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+input[type="range"] { flex: 1; min-width: 160px; accent-color: var(--accent); }
+.outcome { border-radius: 8px; padding: 10px 12px; font-weight: 600; margin-top: 10px; }
+.outcome.ok { background: var(--ok-soft); color: var(--ok); }
+.outcome.warn { background: var(--warn-soft); color: var(--warn); }
+.outcome.bad { background: var(--bad-soft); color: var(--bad); }
+.outcome .why { display: block; font-weight: 400; color: var(--text); margin-top: 4px; font-size: .9rem; }
+.diff-add { color: var(--ok); }
+.diff-del { color: var(--bad); text-decoration: line-through; }
+.op-list li { margin-bottom: 4px; }
+.timeline { position: relative; height: 70px; margin: 18px 6px 6px; }
+.timeline .bar { position: absolute; left: 0; right: 0; top: 30px; height: 6px; background: var(--surface-2); border-radius: 3px; border: 1px solid var(--border); }
+.timeline .fill { position: absolute; left: 0; top: 30px; height: 6px; background: var(--accent); border-radius: 3px; }
+.timeline .mk { position: absolute; top: 0; transform: translateX(-50%); text-align: center; font-size: .74rem; color: var(--muted); white-space: nowrap; }
+.timeline .mk::after { content: ""; display: block; width: 2px; height: 14px; background: var(--border); margin: 2px auto 0; }
+.timeline .mk.hit { color: var(--text); font-weight: 600; }
+.timeline .mk.hit::after { background: var(--accent); }
+.timeline .now { position: absolute; top: 24px; width: 14px; height: 18px; transform: translateX(-50%); border-radius: 4px; background: var(--accent); border: 2px solid var(--surface); }
+
+/* architecture svg */
+.arch svg { width: 100%; height: auto; display: block; }
+.arch .node rect { fill: var(--surface); stroke: var(--border); stroke-width: 1.5; rx: 10; }
+.arch .node text { fill: var(--text); font: 600 14px var(--sans); }
+.arch .node text.s { fill: var(--muted); font: 12px var(--sans); }
+.arch .node { cursor: pointer; }
+.arch .node.sel rect { stroke: var(--accent); stroke-width: 2.5; fill: var(--accent-soft); }
+.arch .edge { stroke: var(--muted); stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
+.arch .edge.dash { stroke-dasharray: 5 4; }
+.arch .lbl { fill: var(--muted); font: 11px var(--sans); }
+#arrow path { fill: var(--muted); }
+
+.cols { columns: 2; column-gap: 20px; }
+@media (max-width: 700px) { .cols { columns: 1; } }
+.cols li { break-inside: avoid; margin-bottom: 6px; }
+footer { border-top: 1px solid var(--border); margin-top: 40px; padding: 20px 0 40px; color: var(--muted); font-size: .88rem; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body data-aud="todos">
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand"><span class="logo" aria-hidden="true"></span>Novo RH</div>
+    <nav class="sections" aria-label="Seções">
+      <a href="#inicio">Início</a>
+      <a href="#simulador">Linha ao vivo</a>
+      <a href="#conceitos">Conceitos</a>
+      <a href="#contratos">Regras</a>
+      <a href="#estado-alvo">Estado alvo</a>
+      <a href="#ia">IA</a>
+      <a href="#vigencia">Vigências</a>
+      <a href="#arquitetura">Arquitetura</a>
+      <a href="#seguranca">Segurança</a>
+      <a href="#publicos">Por público</a>
+    </nav>
+    <button class="theme-btn" id="themeBtn" type="button">Tema</button>
+  </div>
+</header>
+
+<main class="wrap">
+
+<!-- ============================================================ INICIO -->
+<section id="inicio">
+  <h1 style="font-size:2rem">Operações de RH como uma linha de produção</h1>
+  <p class="lead">Toda operação de RH, de uma promoção ao reajuste da convenção coletiva, é um evento que passa pelos mesmos seis estágios. As regras estão em contratos que o RH edita, as alterações em sistemas são feitas por operações reutilizáveis, a auditoria acontece antes de qualquer alteração e cada decisão fica explicada. A IA audita e recomenda; quem decide são as regras e as pessoas.</p>
+
+  <div class="aud-bar" role="group" aria-label="Público">
+    <span class="lbl">Ver explicações para:</span>
+    <button class="seg" data-aud="todos" aria-pressed="true" type="button">Todos</button>
+    <button class="seg" data-aud="negocio" aria-pressed="false" type="button">Negócio</button>
+    <button class="seg" data-aud="tecnico" aria-pressed="false" type="button">Times técnicos</button>
+    <button class="seg" data-aud="seguranca" aria-pressed="false" type="button">Segurança</button>
+    <button class="seg" data-aud="arquitetura" aria-pressed="false" type="button">Arquitetura</button>
+  </div>
+
+  <div class="line" id="heroLine" aria-label="Estágios da linha"></div>
+
+  <div class="aud-note" data-aud="negocio"><b>Negócio</b>Um único fluxo para todas as movimentações: confere se é permitido, planeja o que muda em cada sistema, audita antes de mexer, executa com garantia de desfazer e prova no final que foi feito o que foi aprovado.</div>
+  <div class="aud-note" data-aud="tecnico"><b>Times técnicos</b>Seis estágios, uma fila Redis Streams por estágio, workers horizontais por grupo de consumidores, lógica de decisão pura em <code>engine.py</code> testável sem Redis e sem rede.</div>
+  <div class="aud-note" data-aud="seguranca"><b>Segurança</b>Nenhum sistema é alterado antes da auditoria; regras determinísticas decidem; a IA não tem poder de aprovação; cada decisão vai para um log append-only com o ator.</div>
+  <div class="aud-note" data-aud="arquitetura"><b>Arquitetura</b>Uma linha, muitos processos: o comportamento está em contratos versionados com vigência; o plano é derivado do estado alvo; a execução é uma saga com compensação.</div>
+
+  <div class="grid g4" style="margin-top:14px">
+    <div class="card kpi"><div class="n">6</div><div class="l">estágios fixos para qualquer evento</div></div>
+    <div class="card kpi"><div class="n">4</div><div class="l">tipos de contrato: norma, política, cargo, processo</div></div>
+    <div class="card kpi"><div class="n">35</div><div class="l">operações na prateleira, em 12 sistemas</div></div>
+    <div class="card kpi"><div class="n">54</div><div class="l">cenários com resultado esperado</div></div>
+    <div class="card kpi"><div class="n">20</div><div class="l">processos de RH modelados</div></div>
+    <div class="card kpi"><div class="n">7</div><div class="l">personas de aprovação</div></div>
+    <div class="card kpi"><div class="n">61</div><div class="l">testes unitários sem Redis e sem rede</div></div>
+    <div class="card kpi"><div class="n">24</div><div class="l">decisões arquiteturais registradas</div></div>
+  </div>
+</section>
+
+<!-- ============================================================ SIMULADOR -->
+<section id="simulador">
+  <h2>Linha ao vivo</h2>
+  <p class="lead">Escolha um cenário e acompanhe o caso atravessando a linha. Cada estágio mostra as regras avaliadas, o plano, o parecer da IA, o log e o próximo passo, como no detalhe do caso do laboratório. Os dados são fictícios.</p>
+
+  <div class="sim">
+    <div class="sc-list" id="scList" role="group" aria-label="Cenários"></div>
+    <div class="card">
+      <div class="controls">
+        <button class="btn primary" id="btnRun" type="button">Executar</button>
+        <button class="btn" id="btnStep" type="button">Avançar um estágio</button>
+        <button class="btn" id="btnReset" type="button">Reiniciar</button>
+        <span class="status-pill" id="caseStatus">NA_FILA</span>
+        <span class="muted small" id="caseId"></span>
+      </div>
+      <div class="line" id="simLine"></div>
+      <div class="next" id="nextStep"><b>Próximo passo:</b> <span>Escolha um cenário e clique em Executar.</span></div>
+      <div class="grid g2" style="margin-top:12px">
+        <div class="detail" id="stageDetail"><p class="muted">O detalhe do estágio aparece aqui.</p></div>
+        <div>
+          <div class="sub muted small" style="font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Log de decisões</div>
+          <div class="log" id="logBox" aria-live="polite"></div>
+        </div>
+      </div>
+      <div id="approvalBox"></div>
+    </div>
+  </div>
+
+  <div class="aud-note" data-aud="negocio"><b>Negócio</b>Repare na explicação de cada regra ("5 meses no cargo; mínimo de 12") e em quem precisa agir. Ninguém precisa investigar por que um caso parou.</div>
+  <div class="aud-note" data-aud="tecnico"><b>Times técnicos</b>No laboratório, cada transição é uma mensagem num stream do Redis; o caso é um documento JSON em <code>hr:case:{id}</code>; cada linha do log é uma entrada em <code>hr:log</code>, também gravada em <code>audit-log.jsonl</code>.</div>
+  <div class="aud-note" data-aud="seguranca"><b>Segurança</b>A aprovação só aceita as personas listadas na regra e exige justificativa. Tente aprovar com a persona errada ou sem justificativa.</div>
+  <div class="aud-note" data-aud="arquitetura"><b>Arquitetura</b>A falha da operadora de benefícios mostra a saga: os passos já aplicados são compensados em ordem inversa, restaurando os campos que cada operação declarou alterar.</div>
+</section>
+
+<!-- ============================================================ CONCEITOS -->
+<section id="conceitos">
+  <h2>Conceitos e onde são aplicados</h2>
+  <p class="lead">Cada conceito com o que é, em que estágio atua, onde ver no laboratório e onde está no código. Clique num estágio para destacá-lo na linha acima.</p>
+  <div class="filters" id="conceptFilters" role="group" aria-label="Filtrar conceitos"></div>
+  <div class="grid g3" id="conceptGrid"></div>
+</section>
+
+<!-- ============================================================ CONTRATOS -->
+<section id="contratos">
+  <h2>Regras em contratos</h2>
+  <p class="lead">As regras ficam em contratos YAML versionados e com vigência. Cada regra é uma expressão que deve ser verdadeira, com tipo, aprovadores, base legal e uma frase que explica a falha. Mude os valores e veja o efeito.</p>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Regra PRM-05 do processo de promoção</h3>
+      <pre id="ruleYaml"></pre>
+      <p class="small muted" style="margin-top:8px">O valor <code>politica.promocao.meses_minimos_no_cargo</code> vem do contrato de política, não do processo. Mudar o interstício é salvar uma nova versão da política.</p>
+    </div>
+    <div class="card">
+      <h3>Experimente</h3>
+      <label for="rMeses">Meses no cargo do colaborador: <b id="rMesesV">5</b></label>
+      <div class="range-row"><input type="range" id="rMeses" min="0" max="36" value="5"></div>
+      <label for="rMin">Interstício na política (meses): <b id="rMinV">12</b></label>
+      <div class="range-row"><input type="range" id="rMin" min="0" max="24" value="12"></div>
+      <label for="rTipo">Tipo da regra</label><br>
+      <select id="rTipo">
+        <option value="EXCECIONAVEL">EXCECIONAVEL: barra até uma persona aprovar</option>
+        <option value="BLOQUEANTE">BLOQUEANTE: barra o caso</option>
+        <option value="ALERTA">ALERTA: só registra</option>
+      </select>
+      <div id="rOut"></div>
+    </div>
+  </div>
+
+  <div class="grid g4" style="margin-top:14px">
+    <div class="card"><span class="tag acc">NORMA</span><h3>CLT e CCT</h3><p class="small">Piso, VR, VA, gratificações, sindicatos por UF, estabilidades. Dono natural: jurídico trabalhista.</p></div>
+    <div class="card"><span class="tag acc">POLITICA</span><h3>Política interna</h3><p class="small">Interstício, limites de aumento e bônus, conduta, programas com vigência. Dono: diretoria de Pessoas.</p></div>
+    <div class="card"><span class="tag acc">CARGO</span><h3>Estado alvo</h3><p class="small">Jornada, faixa, verbas, benefícios, acessos, equipamentos, certificações, regras de entrada e compliance.</p></div>
+    <div class="card"><span class="tag acc">PROCESSO</span><h3>Um por evento</h3><p class="small">Esquema, elegibilidade, orquestração das operações e auditoria com SLA e verificações.</p></div>
+  </div>
+
+  <div class="aud-note" data-aud="seguranca"><b>Segurança</b>As expressões são avaliadas por um interpretador próprio com lista branca sobre a AST. <code>__import__</code>, <code>lambda</code>, <code>open</code> e atributos que começam com <code>_</code> são recusados ao salvar. Não há <code>eval</code>.</div>
+  <div class="aud-note" data-aud="tecnico"><b>Times técnicos</b>Variáveis disponíveis: <code>colaborador</code>, <code>anterior</code>, <code>gestor</code>, <code>evento</code>, <code>hoje</code>, <code>norma</code>, <code>politica</code>, <code>cargo_destino</code>, <code>meses_no_cargo</code> e outras; funções como <code>possui_beneficio</code>, <code>estabilidade_ativa</code>, <code>sindicato_da_uf</code>, <code>programa_ativo</code>. Veja <code>docs/contratos.md</code>.</div>
+</section>
+
+<!-- ============================================================ ESTADO ALVO -->
+<section id="estado-alvo">
+  <h2>Estado alvo e plano derivado</h2>
+  <p class="lead">Cada cargo descreve como deve estar quem o ocupa. O planejamento compara o estado atual com o estado alvo do cargo destino e acrescenta ao plano as operações que faltam, cada uma com motivo. Valores dos contratos de exemplo.</p>
+  <div class="card">
+    <div class="controls" style="margin-bottom:10px">
+      <label for="alvoSel">Promover um Analista Júnior para</label>
+      <select id="alvoSel">
+        <option value="PL">Analista Pleno</option>
+        <option value="COORD">Coordenador</option>
+        <option value="GAG">Gerente Geral de Agência</option>
+      </select>
+    </div>
+    <div class="grid g2">
+      <div class="tbl-wrap"><table id="alvoTbl"></table></div>
+      <div>
+        <div class="sub muted small" style="font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Operações no plano</div>
+        <ol class="op-list" id="alvoOps"></ol>
+        <div id="alvoWarn"></div>
+      </div>
+    </div>
+  </div>
+  <div class="aud-note" data-aud="negocio"><b>Negócio</b>Nada fica esquecido: plano de saúde do nível, gratificação, celular corporativo, acessos. A mesma comparação aponta quem já está fora do padrão hoje.</div>
+  <div class="aud-note" data-aud="arquitetura"><b>Arquitetura</b>Operações explícitas do processo mais operações derivadas da diferença. A prateleira declara parâmetros, campos alterados, ordem e compensação; qualquer processo reutiliza.</div>
+</section>
+
+<!-- ============================================================ IA -->
+<section id="ia">
+  <h2>IA como segunda linha de defesa</h2>
+  <p class="lead">O agente de conferência classifica a elegibilidade (consultiva), audita o plano antes da execução e confere a execução depois. Ele sempre recomenda APROVADO ou REPROVADO com justificativa, mas não decide sozinho. Monte a combinação e veja o resultado.</p>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Como regras e agente se combinam na auditoria</h3>
+      <div class="grid g3" style="gap:8px">
+        <div><label for="mRegras">Regras</label><br><select id="mRegras">
+          <option value="ok">Passaram</option>
+          <option value="exc">Excecionável falhou</option>
+          <option value="blq">Bloqueante falhou</option>
+        </select></div>
+        <div><label for="mAgente">Agente</label><br><select id="mAgente">
+          <option value="APROVADO">APROVADO</option>
+          <option value="REPROVADO">REPROVADO</option>
+        </select></div>
+        <div><label for="mModo">Revisão humana</label><br><select id="mModo">
+          <option value="SE_REPROVADO">SE_REPROVADO (padrão)</option>
+          <option value="SEMPRE">SEMPRE</option>
+        </select></div>
+      </div>
+      <div id="mOut"></div>
+    </div>
+    <div class="card">
+      <h3>Motores e provedores</h3>
+      <div class="tbl-wrap"><table>
+        <tr><th></th><th>Qwen (generativo)</th><th>JEV (decisão)</th></tr>
+        <tr><td>Modelo</td><td><code>qwen2.5:7b</code> ou o do provedor</td><td><code>tev1:0.8b</code> no Ollama 0.35+</td></tr>
+        <tr><td>Entrada</td><td>caso inteiro em JSON</td><td>textos curtos por tarefa</td></tr>
+        <tr><td>Saída</td><td>veredito, confiança, achados e justificativa escritos</td><td>probabilidades de veredito, verificações e risco</td></tr>
+      </table></div>
+      <p class="small" style="margin-top:8px">Provedores: <span class="tag ok">Ollama (padrão, local)</span><span class="tag">Anthropic Claude</span><span class="tag">OpenAI ou compatível</span><span class="tag">Google Gemini</span></p>
+      <p class="small muted">A tela Desempenho compara os dois motores nos mesmos casos: tempo de resposta, processamento, concordância e quem foi mais rigoroso.</p>
+    </div>
+  </div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="card"><h3>O que a IA faz</h3><ul class="small"><li>Lê o caso, o plano e o resultado das regras</li><li>Recomenda APROVADO ou REPROVADO com confiança e achados</li><li>Responde perguntas em linguagem natural citando os casos</li></ul></div>
+    <div class="card"><h3>O que a IA nunca faz</h3><ul class="small"><li>Aprovar o que uma regra bloqueante barrou</li><li>Calcular números das respostas (vêm dos fatos, em Python)</li><li>Seguir sem resposta: se cair, o caso espera</li></ul></div>
+    <div class="card"><h3>Proteções</h3><ul class="small"><li>Saída restrita por JSON Schema</li><li>Fora do formato duas vezes vale REPROVADO e revisão humana</li><li>Prompt e resposta bruta gravados no caso</li></ul></div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h3>Custo de IA externa sob controle <span class="tag warn">PR #8, pendente de merge</span></h3>
+    <div class="grid g3" style="gap:10px">
+      <div class="small"><b>Primeiro acesso.</b> O assistente pergunta: Ollama, externo (Anthropic, Google Gemini ou OpenAI) ou sem IA.</div>
+      <div class="small"><b>Teste da API em cinco etapas.</b> Chave, teto, conexão, modelo e chamada de teste, com requisições, tempo, tokens, custo e a etapa em que parou.</div>
+      <div class="small"><b>Teto de gastos opcional.</b> Preço por modelo e teto (mensal ou total) são opcionais. Com o teto atingido, a chamada não sai, o caso espera, uma faixa vermelha aparece em todas as telas e o log registra <code>GASTOS_LLM</code>.</div>
+    </div>
+    <div class="range-row" style="margin-top:10px"><label for="capUsed">Gasto do período em relação ao teto: <b id="capUsedV"></b></label><input type="range" id="capUsed" min="0" max="110" value="40"></div>
+    <div id="capOut"></div>
+  </div>
+  <div class="aud-note" data-aud="seguranca"><b>Segurança</b>O prompt do auditor leva o colaborador resumido, sem nome e sem CPF. Com Ollama, nada sai da rede; um provedor na nuvem é escolha explícita no assistente, que avisa sobre o envio. As chaves ficam fora do Redis, do log e da API.</div>
+  <div class="aud-note" data-aud="negocio"><b>Negócio</b>Quando a IA discorda das regras, o caso vai para uma pessoa e a divergência vira indicador. A recomendação nunca é escondida, mesmo quando a decisão é humana.</div>
+</section>
+
+<!-- ============================================================ VIGENCIA -->
+<section id="vigencia">
+  <h2>Eventos com vigência</h2>
+  <p class="lead">O programa de alto potencial vale 12 meses a partir da data oficial. Enquanto ativo, suas concessões fazem parte do estado alvo. A agenda emite o aviso 30 dias antes e o vencimento na data; os dois passam pela linha. Mova o relógio simulado.</p>
+  <div class="card">
+    <label for="vClock">Relógio simulado: <b id="vClockV"></b></label>
+    <div class="range-row"><input type="range" id="vClock" min="0" max="420" step="1" value="0"></div>
+    <div class="timeline" id="vTimeline">
+      <div class="bar"></div><div class="fill" id="vFill"></div>
+    </div>
+    <div class="grid g3" style="margin-top:20px">
+      <div><div class="sub muted small" style="font-weight:600">Situação do programa</div><div id="vSit" style="font-weight:600;margin-top:4px"></div></div>
+      <div><div class="sub muted small" style="font-weight:600">Concessões no estado alvo</div><div id="vCon" style="margin-top:4px"></div></div>
+      <div><div class="sub muted small" style="font-weight:600">Eventos emitidos pela agenda</div><div id="vEv" class="small" style="margin-top:4px"></div></div>
+    </div>
+  </div>
+  <div class="aud-note" data-aud="tecnico"><b>Times técnicos</b>A agenda é derivada dos programas ativos (<code>vigencia.py</code>); cada worker confere a cada 5 segundos e emite cada item uma única vez com <code>HSETNX hr:vigencia:emitidos</code>. O relógio fica em <code>hr:clock</code>.</div>
+  <div class="aud-note" data-aud="negocio"><b>Negócio</b>Renovação estende e reagenda o vencimento; encerramento antecipado retira as concessões e cancela o vencimento. Ninguém precisa lembrar de datas.</div>
+</section>
+
+<!-- ============================================================ ARQUITETURA -->
+<section id="arquitetura">
+  <h2>Arquitetura</h2>
+  <p class="lead">Cinco serviços em Docker Compose, com o Ollama opcional. Clique num serviço.</p>
+  <div class="grid g2">
+    <div class="card arch">
+      <svg viewBox="0 0 560 400" role="img" aria-label="Diagrama de serviços">
+        <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker></defs>
+        <path class="edge" d="M280 62 L280 96"/>
+        <path class="edge" d="M280 152 L280 196"/>
+        <path class="edge" d="M350 124 L410 124"/>
+        <path class="edge" d="M140 280 L140 252"/>
+        <path class="edge" d="M420 280 L420 252"/>
+        <path class="edge dash" d="M200 320 L360 320"/>
+        <path class="edge dash" d="M140 340 C 140 380, 470 380, 470 152"/>
+        <text class="lbl" x="288" y="84">/api, SSE</text>
+        <text class="lbl" x="226" y="314">log (hr:log)</text>
+        <text class="lbl" x="300" y="392">agente de conferência</text>
+        <g class="node" data-k="frontend"><rect x="200" y="10" width="160" height="52"/><text x="280" y="34" text-anchor="middle">frontend</text><text class="s" x="280" y="51" text-anchor="middle">React, nginx, 8580</text></g>
+        <g class="node" data-k="api"><rect x="210" y="98" width="140" height="54"/><text x="280" y="122" text-anchor="middle">api</text><text class="s" x="280" y="139" text-anchor="middle">FastAPI</text></g>
+        <g class="node" data-k="ia"><rect x="412" y="98" width="138" height="54"/><text x="481" y="122" text-anchor="middle">IA</text><text class="s" x="481" y="139" text-anchor="middle">Ollama ou nuvem</text></g>
+        <g class="node" data-k="redis"><rect x="40" y="198" width="480" height="54"/><text x="280" y="222" text-anchor="middle">redis</text><text class="s" x="280" y="239" text-anchor="middle">streams, documentos, log, pub/sub, índice</text></g>
+        <g class="node" data-k="worker"><rect x="40" y="282" width="200" height="58"/><text x="140" y="306" text-anchor="middle">worker (N)</text><text class="s" x="140" y="324" text-anchor="middle">um loop por estágio</text></g>
+        <g class="node" data-k="indexer"><rect x="320" y="282" width="200" height="58"/><text x="420" y="306" text-anchor="middle">indexer</text><text class="s" x="420" y="324" text-anchor="middle">embeddings dos eventos</text></g>
+      </svg>
+    </div>
+    <div class="card" id="archInfo"></div>
+  </div>
+
+  <div class="grid g2" style="margin-top:14px">
+    <div class="card">
+      <h3>Princípios</h3>
+      <ul class="small">
+        <li><b>Uma linha, muitos processos.</b> O que muda por evento é o contrato de processo.</li>
+        <li><b>Comportamento em dados.</b> Contratos versionados com vigência.</li>
+        <li><b>Plano derivado do estado alvo.</b> O que falta entra sozinho.</li>
+        <li><b>Auditar antes de alterar.</b> Simulação sobre uma cópia do colaborador.</li>
+        <li><b>Falhar de forma reversível.</b> Saga com compensação por snapshot.</li>
+        <li><b>Tudo explicado.</b> O mesmo log alimenta painel, índice e perguntas.</li>
+        <li><b>Lógica pura testável.</b> <code>engine</code>, <code>facts</code>, <code>shelf</code> e <code>expr</code> sem I/O.</li>
+        <li><b>Provedor de IA trocável.</b> Toda chamada passa por <code>llm.py</code>.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Consistência e resiliência</h3>
+      <div class="tbl-wrap"><table>
+        <tr><th>Mecanismo</th><th>Protege contra</th></tr>
+        <tr><td>Grupo de consumidores</td><td>Duas execuções da mesma mensagem</td></tr>
+        <tr><td>Guarda de obsolescência</td><td>Mensagem duplicada ou atrasada</td></tr>
+        <tr><td>Idempotência (<code>SET NX</code>)</td><td>Mesmo evento abrir dois casos</td></tr>
+        <tr><td>Trava por colaborador</td><td>Dois casos alterando a mesma pessoa</td></tr>
+        <tr><td>Versão do cadastro</td><td>Executar plano desatualizado (replaneja até 3 vezes)</td></tr>
+        <tr><td>Retomada de pendentes</td><td>Worker que caiu no meio do estágio</td></tr>
+        <tr><td>Espera pela IA</td><td>Seguir sem parecer</td></tr>
+      </table></div>
+    </div>
+  </div>
+  <div class="aud-note" data-aud="arquitetura"><b>Arquitetura</b>Trade-offs aceitos: Redis para tudo (simples, mas limita volume e consultas), IA síncrona no estágio (parecer antes da decisão, mas é o gargalo), fatos calculados por requisição (sempre iguais ao log, mas custam com volume). O caminho para produção troca armazenamento, mensageria e índice vetorial sem mudar a linha.</div>
+</section>
+
+<!-- ============================================================ SEGURANCA -->
+<section id="seguranca">
+  <h2>Segurança e privacidade</h2>
+  <p class="lead">As decisões são protegidas por desenho. O acesso não, porque é um laboratório com dados fictícios. As lacunas estão listadas e o caminho para produção está escrito.</p>
+  <div class="grid g2">
+    <div class="card">
+      <h3><span class="tag ok">Existe</span> Controles</h3>
+      <ul class="small">
+        <li>Regras decidem; a IA não aprova o que a regra barra</li>
+        <li>Avaliador de expressões com lista branca, sem <code>eval</code></li>
+        <li>Auditoria antes da execução e conferência final depois</li>
+        <li>Saga, idempotência, trava e versão do cadastro</li>
+        <li>Aprovação só pelas personas da regra, com justificativa</li>
+        <li>Log append-only com ator; prompt e resposta da IA gravados</li>
+        <li>Chave de API fora do Redis, do log e da API; arquivo 0600</li>
+        <li>Prompt do auditor sem nome e CPF</li>
+        <li>Ollama local por padrão</li>
+        <li>Só o frontend publica porta</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><span class="tag warn">Lacuna aceita</span> Antes de produção</h3>
+      <ul class="small">
+        <li>Sem login; persona escolhida no cabeçalho <code>X-Persona</code></li>
+        <li>CORS aberto; porta em todas as interfaces; sem TLS</li>
+        <li>Redis sem senha e sem TLS</li>
+        <li>URLs de IA editáveis pela interface (risco de SSRF)</li>
+        <li>Segredo em arquivo no volume; dados sem criptografia em repouso</li>
+        <li>Sem limite de taxa; o teto de gastos opcional com IA externa chega no PR #8 (pendente de merge)</li>
+        <li>Log no mesmo Redis; contratos editáveis por qualquer persona</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h3>Caminho para produção</h3>
+    <ol class="cols small">
+      <li>SSO (OIDC) e persona derivada de papéis</li>
+      <li>TLS, CORS restrito, proxy reverso, Redis com ACL</li>
+      <li>Cofre de segredos</li>
+      <li>Destinos de IA permitidos e teto de gasto</li>
+      <li>Log em armazenamento imutável ou SIEM</li>
+      <li>Aprovação de duas pessoas para nova versão de contrato</li>
+      <li>Mascaramento no prompt e no índice; retenção LGPD</li>
+      <li>Análise estática, de dependências e de imagens no CI</li>
+      <li>Pentest da API e testes de injeção no agente de perguntas</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ============================================================ PUBLICOS -->
+<section id="publicos">
+  <h2>Por público</h2>
+  <div class="grid g2" id="audCards"></div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    Novo RH, laboratório de arquitetura de operações de RH orientada a eventos. Os valores de piso, benefícios, gratificações e demais parâmetros da CCT dos bancários são ilustrativos e fictícios. Pessoas, casos e protocolos desta página são exemplos. Documentação completa em <code>docs/solucao-completa.md</code>.
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  // ------------------------------------------------------------ theme
+  var root = document.documentElement;
+  try { var saved = localStorage.getItem("hr-demo-theme"); if (saved) root.setAttribute("data-theme", saved); } catch (e) {}
+  document.getElementById("themeBtn").addEventListener("click", function () {
+    var cur = root.getAttribute("data-theme");
+    if (!cur) cur = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    var nxt = cur === "dark" ? "light" : "dark";
+    root.setAttribute("data-theme", nxt);
+    try { localStorage.setItem("hr-demo-theme", nxt); } catch (e) {}
+  });
+
+  function el(tag, attrs, html) {
+    var n = document.createElement(tag);
+    if (attrs) for (var k in attrs) { if (k === "class") n.className = attrs[k]; else n.setAttribute(k, attrs[k]); }
+    if (html != null) n.innerHTML = html;
+    return n;
+  }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+
+  // ------------------------------------------------------------ stages
+  var STAGES = [
+    { k: "intake", n: "Gatilho", d: "Recebe e valida o evento, garante idempotência e abre o caso." },
+    { k: "eligibility", n: "Elegibilidade", d: "Regras de política, conduta, CLT e CCT do processo e do cargo." },
+    { k: "planning", n: "Planejamento", d: "Estado alvo, operações da prateleira e projeção do resultado." },
+    { k: "audit", n: "Auditoria", d: "Antes de alterar: regras e IA auditam o plano e o estado projetado." },
+    { k: "execution", n: "Execução", d: "Operações auditadas em saga, com compensação em caso de falha." },
+    { k: "verification", n: "Conferência final", d: "Recibos de todas as operações e estado final igual ao projetado." }
+  ];
+
+  function buildLine(container, clickable) {
+    container.innerHTML = "";
+    STAGES.forEach(function (s, i) {
+      var b = el("div", { class: "stage", "data-k": s.k, tabindex: "0", title: s.d },
+        '<div class="num">' + (i + 1) + '</div><div class="nm">' + s.n + '</div><div class="st">' + (clickable ? "pendente" : esc(s.d)) + "</div>");
+      container.appendChild(b);
+    });
+  }
+  buildLine(document.getElementById("heroLine"), false);
+
+  // ------------------------------------------------------------ audience
+  var audBtns = document.querySelectorAll(".seg[data-aud]");
+  audBtns.forEach(function (b) {
+    b.addEventListener("click", function () {
+      audBtns.forEach(function (x) { x.setAttribute("aria-pressed", x === b ? "true" : "false"); });
+      document.body.setAttribute("data-aud", b.getAttribute("data-aud"));
+      applyConceptFilter(b.getAttribute("data-aud"));
+    });
+  });
+
+  // ------------------------------------------------------------ scenarios
+  var OK = "ok", WAIT = "wait", STOP = "stop", FAIL = "fail", COMP = "comp";
+  function R(id, desc, tipo, ok, expl) { return { id: id, desc: desc, tipo: tipo, ok: ok, expl: expl }; }
+
+  var promoBase = [
+    { st: "intake", state: OK, label: "evento aceito", titulo: "Evento colaborador.promovido aceito",
+      texto: "Contrato PROC_PROMOCAO vigente na data efetiva. Esquema válido: cargo_destino = ANALISTA_PL, novo_salario = 7.200,00. Colaborador existe. Primeira vez que este evento chega.",
+      log: [["EVENTO_RECEBIDO", "Evento colaborador.promovido recebido para Ana Ribeiro (C-1042)"], ["ESTAGIO", "Gatilho concluído: contrato PROC_PROMOCAO v1"]],
+      proximo: "Na fila de Elegibilidade: avaliar as regras do processo e as de entrada do cargo destino." },
+    { st: "eligibility", state: OK, label: "ELEGIVEL", titulo: "Elegível",
+      regras: [R("PRM-01", "Colaborador ativo", "BLOQUEANTE", true), R("PRM-03", "Promoção sobe de nível", "BLOQUEANTE", true), R("PRM-05", "Interstício mínimo no cargo atual", "EXCECIONAVEL", true, "14 meses no cargo; mínimo de 12."), R("PRM-07", "Avaliação de desempenho mínima", "EXCECIONAVEL", true), R("PRM-08", "Sem processo disciplinar em aberto", "EXCECIONAVEL", true), R("PRM-11", "Novo salário não reduz o atual", "BLOQUEANTE", true), R("PRM-12", "Aumento dentro do limite da política", "EXCECIONAVEL", true, "Aumento de 20,0%; limite de 25%.")],
+      agente: { rec: "ELEGIVEL", conf: 0.91, resumo: "Classificação consultiva igual à das regras." },
+      log: [["REGRA_AVALIADA", "7 regras avaliadas, todas atendidas"], ["DECISAO_ELEGIBILIDADE", "ELEGIVEL"], ["AGENTE_RECOMENDACAO", "Elegibilidade: ELEGIVEL (0,91), consultiva"]],
+      proximo: "Na fila de Planejamento: calcular o estado alvo do Analista Pleno e montar o plano." },
+    { st: "planning", state: OK, label: "plano com 5 operações", titulo: "Plano gerado",
+      texto: "Estado alvo do Analista Pleno: jornada 6h (CLT art. 224), faixa 6.800 a 9.500, saúde PRATA, acesso DATALAKE_LEITURA.",
+      ops: [["ALTERAR_CARGO", "Cargo destino do evento", false], ["ALTERAR_SALARIO", "Maior entre o proposto, o atual e o mínimo da faixa: 7.200,00", false], ["ALTERAR_BENEFICIO", "Saúde BASICO para PRATA pelo estado alvo", true], ["CONCEDER_ACESSO", "DATALAKE_LEITURA pelo estado alvo", true], ["ENVIAR_ESOCIAL", "S-2206 alteração contratual", false]],
+      descartadas: [["ALTERAR_JORNADA", "Já está em 6h, igual ao estado alvo."]],
+      log: [["PLANO_GERADO", "5 operações escolhidas, 1 descartada"], ["OPERACAO_ESCOLHIDA", "ALTERAR_BENEFICIO (derivada do estado alvo)"], ["OPERACAO_DESCARTADA", "ALTERAR_JORNADA: já está em 6h"]],
+      proximo: "Na fila de Auditoria: aplicar o plano numa cópia e auditar antes de alterar qualquer sistema." },
+    { st: "audit", state: OK, label: "aprovado", titulo: "Auditoria aprovada antes da execução",
+      texto: "Plano aplicado em simulação. Regras do plano, verificações do contrato de serviço, compliance da norma e do cargo e estado alvo avaliados sobre o estado projetado.",
+      regras: [R("PRM-PLN-01", "Plano contém o eSocial da alteração", "BLOQUEANTE", true), R("NRM-01", "Jornada compatível com o cargo (CLT art. 224)", "BLOQUEANTE", true), R("APL-CMP-01", "Estado projetado igual ao estado alvo", "BLOQUEANTE", true)],
+      agente: { rec: "APROVADO", conf: 0.86, resumo: "Plano coerente com a promoção para analista pleno. Achado BAIXO: aumento próximo do limite da política." },
+      log: [["AUDITORIA", "Estado projetado aderente; 0 falhas"], ["AGENTE_RECOMENDACAO", "Auditoria: APROVADO (0,86)"]],
+      proximo: "Na fila de Execução: aplicar as operações auditadas em saga." },
+    { st: "execution", state: OK, label: "5 recibos", titulo: "Execução concluída",
+      texto: "Trava do colaborador obtida. Versão do cadastro igual à do plano. Operações aplicadas em ordem, cada uma com recibo.",
+      recibos: [["ALTERAR_CARGO", "folha", "PRT-88120"], ["ALTERAR_SALARIO", "folha", "PRT-88121"], ["ALTERAR_BENEFICIO", "beneficios", "PRT-88122"], ["CONCEDER_ACESSO", "iam", "PRT-88123"], ["ENVIAR_ESOCIAL", "esocial", "PRT-88124"]],
+      log: [["OPERACAO_EXECUTADA", "5 operações executadas com recibo"]],
+      proximo: "Na fila de Conferência final: provar que o executado é igual ao auditado." },
+    { st: "verification", state: OK, label: "conferido", titulo: "Conferência final aprovada",
+      texto: "Todas as operações planejadas têm recibo. Estado final igual ao projetado na auditoria.",
+      agente: { rec: "APROVADO", conf: 0.9, resumo: "Execução igual à auditada." },
+      log: [["AGENTE_RECOMENDACAO", "Conferência: APROVADO (0,90)"], ["DECISAO_FINAL", "CONCLUIDO: execução igual à auditada e com recibos"]],
+      final: { status: "CONCLUIDO", cls: "ok", texto: "Concluído. Execução igual à auditada e com recibos; agente recomenda APROVADO." } }
+  ];
+
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+
+  var SCENARIOS = [
+    { id: "promocao_padrao", t: "Promoção padrão", d: "Analista júnior elegível promovido a pleno.", steps: clone(promoBase) },
+    { id: "promocao_sem_intersticio", t: "Promoção sem interstício", d: "5 meses no cargo; exige exceção do HRBP.", steps: (function () {
+      var s = clone(promoBase.slice(0, 1));
+      s[0].texto = s[0].texto.replace("ANALISTA_PL", "ANALISTA_JR").replace("7.200,00", "5.100,00");
+      s[0].log[0][1] = "Evento colaborador.promovido recebido para Bruno Lima (C-1077)";
+      s.push({ st: "eligibility", state: WAIT, label: "EXCECAO_NECESSARIA", titulo: "Exceção necessária",
+        regras: [R("PRM-01", "Colaborador ativo", "BLOQUEANTE", true), R("PRM-03", "Promoção sobe de nível", "BLOQUEANTE", true), R("PRM-05", "Interstício mínimo no cargo atual", "EXCECIONAVEL", false, "Colaborador está há 5 meses no cargo; mínimo de 12."), R("PRM-11", "Novo salário não reduz o atual", "BLOQUEANTE", true)],
+        agente: { rec: "EXCECAO_NECESSARIA", conf: 0.88, resumo: "Concorda com as regras: interstício não cumprido, demais requisitos atendidos." },
+        log: [["REGRA_AVALIADA", "PRM-05 falhou (EXCECIONAVEL): 5 meses; mínimo de 12"], ["DECISAO_ELEGIBILIDADE", "EXCECAO_NECESSARIA"], ["APROVACAO_SOLICITADA", "Exceção de elegibilidade para HRBP (apr-5521)"]],
+        proximo: "Decidir: exceção de elegibilidade por HR Business Partner. Aprovando, o caso segue para o planejamento; rejeitando, encerra como rejeitado.",
+        approval: { tipo: "Exceção de elegibilidade", regra: "PRM-05", aprovadores: ["HRBP"], motivo: "Colaborador está há 5 meses no cargo; mínimo de 12.",
+          onApprove: (function () { var r = clone(promoBase.slice(2)); r[0].texto = "Estado alvo do Analista Júnior mantido; promoção de escriturário para analista júnior. Faixa 4.800 a 6.800."; r[0].ops = [["ALTERAR_CARGO", "Cargo destino do evento", false], ["ALTERAR_SALARIO", "Novo salário 5.100,00", false], ["CONCEDER_ACESSO", "BI_CORPORATIVO pelo estado alvo", true], ["ENVIAR_ESOCIAL", "S-2206 alteração contratual", false]]; r[0].label = "plano com 4 operações"; r[2].recibos = r[2].recibos.slice(0, 4); r[2].label = "4 recibos"; r[2].log = [["OPERACAO_EXECUTADA", "4 operações executadas com recibo"]]; r[0].log[0][1] = "4 operações escolhidas, 1 descartada"; r[0].log[1][1] = "CONCEDER_ACESSO (derivada do estado alvo)"; r[3].final.texto = "Concluído com exceção aprovada pelo HRBP. Execução igual à auditada."; return r; })(),
+          rejectFinal: { status: "REJEITADO", cls: "bad", texto: "Exceção de elegibilidade rejeitada pelo HRBP. Nenhum sistema foi alterado." } } });
+      return s; })() },
+    { id: "desligamento_gestante", t: "Desligamento de gestante", d: "Estabilidade impede a dispensa sem justa causa.", steps: [
+      { st: "intake", state: OK, label: "evento aceito", titulo: "Evento colaborador.desligado aceito", texto: "Contrato PROC_DESLIGAMENTO vigente. Tipo SEM_JUSTA_CAUSA. Colaboradora existe.", log: [["EVENTO_RECEBIDO", "Evento colaborador.desligado recebido para Carla Nunes (C-1110)"]], proximo: "Na fila de Elegibilidade." },
+      { st: "eligibility", state: STOP, label: "NAO_ELEGIVEL", titulo: "Não elegível",
+        regras: [R("DSL-01", "Colaborador ativo ou afastado", "BLOQUEANTE", true), R("DSL-03", "Estabilidade da gestante (ADCT art. 10 II b)", "BLOQUEANTE", false, "Colaboradora gestante ou em período de estabilidade não pode ser dispensada sem justa causa."), R("DSL-04", "Estabilidade acidentária (Lei 8.213/1991 art. 118)", "BLOQUEANTE", true)],
+        agente: { rec: "NAO_ELEGIVEL", conf: 0.97, resumo: "Concorda: estabilidade da gestante vigente." },
+        log: [["REGRA_AVALIADA", "DSL-03 falhou (BLOQUEANTE)"], ["DECISAO_ELEGIBILIDADE", "NAO_ELEGIVEL"], ["DECISAO_FINAL", "NAO_ELEGIVEL: estabilidade da gestante"]],
+        final: { status: "NAO_ELEGIVEL", cls: "bad", texto: "Não elegível. Estabilidade da gestante vigente. Nenhum sistema foi alterado." } } ] },
+    { id: "falha_beneficios", t: "Falha no sistema de benefícios", d: "A operadora falha no meio da execução; a saga compensa.", steps: (function () {
+      var s = clone(promoBase.slice(0, 4));
+      s[0].log[0][1] = "Evento colaborador.promovido recebido para Diego Alves (C-1033)";
+      s.push({ st: "execution", state: COMP, label: "compensado", titulo: "Falha e compensação",
+        texto: "ALTERAR_CARGO e ALTERAR_SALARIO aplicados com recibo. ALTERAR_BENEFICIO falhou: operadora de benefícios indisponível. A saga compensou os passos aplicados, em ordem inversa, restaurando os campos que cada operação declarou alterar.",
+        recibos: [["ALTERAR_CARGO", "folha", "PRT-90311"], ["ALTERAR_SALARIO", "folha", "PRT-90312"], ["ALTERAR_BENEFICIO", "beneficios", "falhou"], ["COMPENSACAO ALTERAR_SALARIO", "folha", "salario_base restaurado"], ["COMPENSACAO ALTERAR_CARGO", "folha", "cargo restaurado"]],
+        log: [["OPERACAO_EXECUTADA", "ALTERAR_CARGO, ALTERAR_SALARIO"], ["OPERACAO_FALHOU", "ALTERAR_BENEFICIO: operadora indisponível"], ["COMPENSACAO", "ALTERAR_SALARIO compensada"], ["COMPENSACAO", "ALTERAR_CARGO compensada"], ["DECISAO_FINAL", "FALHOU_COMPENSADO"]],
+        final: { status: "FALHOU_COMPENSADO", cls: "info", texto: "Falhou e compensado. O cadastro voltou ao estado anterior; o caso pode ser reprocessado a partir de qualquer estágio." } });
+      return s; })() },
+    { id: "agente_diverge", t: "IA discorda das regras", d: "Contrato editado sem eSocial; a IA reprova e vai para revisão.", steps: (function () {
+      var s = clone(promoBase.slice(0, 2));
+      s[0].log[0][1] = "Evento colaborador.promovido recebido para Elisa Prado (C-1201)";
+      var p = clone(promoBase[2]); p.ops = p.ops.slice(0, 4); p.label = "plano com 4 operações"; p.texto += " Versão 2 do contrato de processo, editada sem ENVIAR_ESOCIAL."; p.log[0][1] = "4 operações escolhidas, 1 descartada";
+      s.push(p);
+      s.push({ st: "audit", state: WAIT, label: "revisão humana", titulo: "Agente reprova o que as regras aprovam",
+        texto: "As regras avaliadas passaram, mas o agente encontrou um problema. No modo SE_REPROVADO, o caso vai para revisão humana antes de qualquer alteração.",
+        regras: [R("NRM-01", "Jornada compatível com o cargo", "BLOQUEANTE", true), R("APL-CMP-01", "Estado projetado igual ao estado alvo", "BLOQUEANTE", true)],
+        agente: { rec: "REPROVADO", conf: 0.82, resumo: "Achado ALTO: alteração contratual de cargo e salário sem envio de evento S-2206 ao eSocial." },
+        log: [["AUDITORIA", "Regras atendidas"], ["AGENTE_RECOMENDACAO", "Auditoria: REPROVADO (0,82)"], ["APROVACAO_SOLICITADA", "Revisão humana da auditoria para AUDITORIA ou COMPLIANCE (apr-6610)"]],
+        proximo: "Decidir: revisão humana da auditoria por Auditoria interna ou Compliance. Aprovando, a execução segue; rejeitando, o caso é rejeitado sem alterar nada.",
+        approval: { tipo: "Revisão humana da auditoria", regra: "parecer do agente", aprovadores: ["AUDITORIA", "COMPLIANCE"], motivo: "Agente recomenda REPROVADO: alteração contratual sem eSocial.",
+          onApprove: (function () { var r = clone(promoBase.slice(4)); r[0].recibos = r[0].recibos.slice(0, 4); r[0].label = "4 recibos"; r[1].final = { status: "CONCLUIDO_COM_RESSALVAS", cls: "warn", texto: "Concluído com ressalvas. Execução aprovada por revisão humana contra o parecer do agente; divergência registrada." }; r[1].log = [["DECISAO_FINAL", "CONCLUIDO_COM_RESSALVAS"]]; return r; })(),
+          rejectFinal: { status: "REJEITADO", cls: "bad", texto: "Revisão humana rejeitou o plano. Nenhum sistema foi alterado; o contrato de processo precisa voltar a ter o eSocial." } } });
+      return s; })() },
+    { id: "evento_duplicado", t: "Evento duplicado", d: "Mesmo id enviado duas vezes; o segundo é descartado.", steps: [
+      { st: "intake", state: STOP, label: "DUPLICADO", titulo: "Evento já processado",
+        texto: "O evento evt-7f31 já abriu o caso caso-1a2b3c. A idempotência (SET NX em hr:event:evt-7f31) impede um segundo caso; este aponta para o original.",
+        log: [["EVENTO_DUPLICADO", "evt-7f31 já atendido por caso-1a2b3c"], ["DECISAO_FINAL", "DUPLICADO"]],
+        final: { status: "DUPLICADO", cls: "info", texto: "Duplicado. Nada foi executado de novo; o caso original é a referência." } } ] },
+    { id: "reajuste_cct", t: "Reajuste coletivo da CCT", d: "Data-base: um caso filho por colaborador da base.", skipLabel: "nos casos filhos", steps: [
+      { st: "intake", state: OK, label: "82 casos filhos", titulo: "Evento coletivo cct.reajuste_aplicado",
+        texto: "PROC_REAJUSTE_CCT não altera ninguém diretamente. A expressão de seleção (colaborador.situacao != 'DESLIGADO' e base SEEB-SP) escolhe as pessoas e o gatilho abre um caso filho cct.reajuste_individual para cada uma, com o percentual resolvido.",
+        log: [["EVENTO_RECEBIDO", "cct.reajuste_aplicado, 5,5%"], ["ESTAGIO", "82 casos filhos abertos (pai_id = este caso)"]],
+        proximo: "Cada caso filho percorre a linha inteira: elegibilidade, plano com APLICAR_REAJUSTE e AJUSTAR_VERBA, auditoria, execução e conferência." },
+      { st: "verification", state: OK, label: "filhos concluídos", titulo: "Caso pai acompanha os filhos",
+        texto: "O caso pai mostra o andamento dos filhos. Gratificações de função são recalculadas porque o valor no estado alvo é uma expressão sobre o salário.",
+        log: [["DECISAO_FINAL", "CONCLUIDO: 82 casos filhos"]],
+        final: { status: "CONCLUIDO", cls: "ok", texto: "Concluído. Um caso por colaborador, cada um com plano, auditoria e recibos próprios." } } ] }
+  ];
+
+  var PERSONAS = [["OPERADOR", "Operador de RH"], ["GESTOR", "Gestor imediato"], ["HRBP", "HR Business Partner"], ["JURIDICO", "Jurídico trabalhista"], ["COMPLIANCE", "Compliance"], ["AUDITORIA", "Auditoria interna"], ["COMITE", "Comitê de remuneração"]];
+
+  var scList = document.getElementById("scList");
+  var simLine = document.getElementById("simLine");
+  var detailBox = document.getElementById("stageDetail");
+  var logBox = document.getElementById("logBox");
+  var nextBox = document.querySelector("#nextStep span");
+  var statusPill = document.getElementById("caseStatus");
+  var caseIdEl = document.getElementById("caseId");
+  var approvalBox = document.getElementById("approvalBox");
+  var btnRun = document.getElementById("btnRun"), btnStep = document.getElementById("btnStep"), btnReset = document.getElementById("btnReset");
+
+  var cur = null, queue = [], done = [], timer = null, blocked = false, finished = false;
+
+  SCENARIOS.forEach(function (sc) {
+    var b = el("button", { class: "sc-btn", type: "button", "aria-pressed": "false" }, '<span class="t">' + esc(sc.t) + '</span><span class="d">' + esc(sc.d) + "</span>");
+    b.addEventListener("click", function () { select(sc, b); });
+    sc._btn = b;
+    scList.appendChild(b);
+  });
+
+  function select(sc) {
+    SCENARIOS.forEach(function (x) { x._btn.setAttribute("aria-pressed", x === sc ? "true" : "false"); });
+    cur = sc; reset();
+  }
+
+  function reset() {
+    clearInterval(timer); timer = null;
+    buildLine(simLine, true);
+    simLine.querySelectorAll(".stage").forEach(function (n) { n.addEventListener("click", function () { var s = done.filter(function (d) { return d.st === n.getAttribute("data-k"); }).pop(); if (s) renderDetail(s); }); });
+    queue = cur ? clone(cur.steps) : []; done = []; blocked = false; finished = false;
+    logBox.innerHTML = ""; approvalBox.innerHTML = "";
+    detailBox.innerHTML = '<p class="muted">' + (cur ? "Clique em Executar ou avance um estágio de cada vez." : "O detalhe do estágio aparece aqui.") + "</p>";
+    setStatus("NA_FILA", "");
+    caseIdEl.textContent = cur ? "caso-" + cur.id.slice(0, 6) : "";
+    nextBox.textContent = cur ? "Na fila do Gatilho: validar o evento e abrir o caso." : "Escolha um cenário e clique em Executar.";
+    btnRun.disabled = !cur; btnStep.disabled = !cur;
+  }
+
+  function setStatus(s, cls) { statusPill.textContent = s; statusPill.className = "status-pill " + (cls || ""); }
+
+  function addLog(entries, stage) {
+    (entries || []).forEach(function (e) {
+      var d = new Date();
+      var ts = ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2) + ":" + ("0" + d.getSeconds()).slice(-2);
+      logBox.appendChild(el("div", null, '<span class="muted">' + ts + "</span> <span class=\"tp\">" + esc(e[0]) + "</span> [" + esc(stage) + "] " + esc(e[1])));
+    });
+    logBox.scrollTop = logBox.scrollHeight;
+  }
+
+  function stageName(k) { for (var i = 0; i < STAGES.length; i++) if (STAGES[i].k === k) return STAGES[i].n; return k; }
+
+  function renderDetail(s) {
+    var h = "<h4>" + esc(stageName(s.st)) + ": " + esc(s.titulo) + "</h4>";
+    if (s.texto) h += "<p class=\"small\">" + esc(s.texto) + "</p>";
+    if (s.regras) {
+      h += '<div class="sub">Regras avaliadas</div>';
+      s.regras.forEach(function (r) {
+        var cls = r.ok ? "ok" : (r.tipo === "ALERTA" ? "warn" : "bad");
+        h += '<div class="rule"><span class="mark ' + cls + '">' + (r.ok ? "OK" : "FALHA") + "</span><div><b class=\"mono\">" + esc(r.id) + "</b> " + esc(r.desc) + ' <span class="tag">' + esc(r.tipo) + "</span>" + (r.expl ? '<div class="small muted">' + esc(r.expl) + "</div>" : "") + "</div></div>";
+      });
+    }
+    if (s.ops) {
+      h += '<div class="sub">Operações escolhidas</div><ol class="small op-list">';
+      s.ops.forEach(function (o) { h += "<li><code>" + esc(o[0]) + "</code> " + (o[2] ? '<span class="tag acc">derivada</span>' : "") + esc(o[1]) + "</li>"; });
+      h += "</ol>";
+    }
+    if (s.descartadas) {
+      h += '<div class="sub">Operações descartadas</div><ul class="small">';
+      s.descartadas.forEach(function (o) { h += "<li><code>" + esc(o[0]) + "</code> " + esc(o[1]) + "</li>"; });
+      h += "</ul>";
+    }
+    if (s.recibos) {
+      h += '<div class="sub">Recibos</div><div class="tbl-wrap"><table><tr><th>Operação</th><th>Sistema</th><th>Protocolo</th></tr>';
+      s.recibos.forEach(function (r) { h += "<tr><td><code>" + esc(r[0]) + "</code></td><td>" + esc(r[1]) + "</td><td>" + esc(r[2]) + "</td></tr>"; });
+      h += "</table></div>";
+    }
+    if (s.agente) {
+      var a = s.agente, c = /APROVADO|ELEGIVEL/.test(a.rec) && !/NAO_/.test(a.rec) ? "ok" : (/EXCECAO/.test(a.rec) ? "warn" : "bad");
+      h += '<div class="sub">Parecer do agente de IA</div><p class="small"><span class="tag ' + c + '">' + esc(a.rec) + '</span> confiança ' + String(a.conf).replace(".", ",") + "<br>" + esc(a.resumo) + "</p>";
+    }
+    detailBox.innerHTML = h;
+  }
+
+  function markStage(k, state, label) {
+    var n = simLine.querySelector('.stage[data-k="' + k + '"]');
+    if (!n) return;
+    n.classList.remove("active", "ok", "wait", "stop", "fail", "comp");
+    n.classList.add(state);
+    n.querySelector(".st").textContent = label || "";
+  }
+  function markActive(k) {
+    simLine.querySelectorAll(".stage").forEach(function (n) { n.classList.toggle("active", n.getAttribute("data-k") === k && !n.classList.contains("ok")); });
+  }
+
+  function step() {
+    if (blocked || finished || !queue.length) return false;
+    var s = queue.shift();
+    done.push(s);
+    markStage(s.st, s.state, s.label);
+    renderDetail(s);
+    addLog(s.log, s.st);
+    if (s.final) { finish(s.final); return false; }
+    if (s.approval) { setStatus("AGUARDANDO_APROVACAO", "warn"); nextBox.textContent = s.proximo; showApproval(s); blocked = true; return false; }
+    setStatus("PROCESSANDO", "");
+    nextBox.textContent = s.proximo || "";
+    if (queue.length) markActive(queue[0].st);
+    return true;
+  }
+
+  function finish(f) {
+    finished = true; clearInterval(timer); timer = null;
+    setStatus(f.status, f.cls);
+    nextBox.textContent = "Encerrado. " + f.texto;
+    STAGES.forEach(function (s) { if (!done.some(function (d) { return d.st === s.k; })) { var n = simLine.querySelector('.stage[data-k="' + s.k + '"]'); n.classList.add("skip"); n.querySelector(".st").textContent = (cur && cur.skipLabel) || "não executado"; } });
+    btnRun.disabled = true; btnStep.disabled = true;
+  }
+
+  function showApproval(s) {
+    var ap = s.approval;
+    var opts = PERSONAS.map(function (p) { return '<option value="' + p[0] + '"' + (p[0] === "OPERADOR" ? " selected" : "") + ">" + p[1] + "</option>"; }).join("");
+    approvalBox.innerHTML = '<div class="approval"><b>' + esc(ap.tipo) + "</b> pendente. Regra: <code>" + esc(ap.regra) + "</code>. " + esc(ap.motivo) +
+      '<div class="small muted">Aprovadores permitidos: ' + ap.aprovadores.map(esc).join(", ") + ". O parecer do agente aparece ao lado da regra.</div>" +
+      '<div class="row"><div><label for="apPersona">Persona atual</label><select id="apPersona">' + opts + "</select></div>" +
+      '<div style="flex:1;min-width:200px"><label for="apJust">Justificativa (obrigatória)</label><textarea id="apJust" placeholder="Ex.: desempenho excepcional e sucessão aprovada no comitê de pessoas."></textarea></div></div>' +
+      '<div class="row"><button class="btn primary" type="button" id="apOk">Aprovar</button><button class="btn" type="button" id="apNo">Rejeitar</button></div><div class="err" id="apErr"></div></div>';
+    function decide(aprovar) {
+      var p = document.getElementById("apPersona").value, j = document.getElementById("apJust").value.trim(), err = document.getElementById("apErr");
+      if (ap.aprovadores.indexOf(p) < 0) { err.textContent = "A persona " + p + " não pode decidir; aprovadores: " + ap.aprovadores.join(", ") + "."; addLog([["CONTROLE", "Tentativa recusada: persona " + p + " sem permissão"]], s.st); return; }
+      if (j.length < 5) { err.textContent = "Justificativa obrigatória (mínimo 5 caracteres)."; return; }
+      addLog([["APROVACAO_DECIDIDA", ap.tipo + " " + (aprovar ? "aprovada" : "rejeitada") + " por " + p + ": " + j]], s.st);
+      approvalBox.innerHTML = "";
+      blocked = false;
+      if (aprovar) {
+        markStage(s.st, "ok", s.st === "eligibility" ? "exceção aprovada" : "revisão aprovada");
+        queue = clone(ap.onApprove).concat(queue);
+        setStatus("NA_FILA", "");
+        nextBox.textContent = "Todas as decisões humanas do estágio foram aprovadas. Na fila de " + stageName(queue[0].st) + ".";
+        markActive(queue[0].st);
+      } else {
+        markStage(s.st, "stop", "rejeitado");
+        finish(ap.rejectFinal);
+      }
+    }
+    document.getElementById("apOk").addEventListener("click", function () { decide(true); });
+    document.getElementById("apNo").addEventListener("click", function () { decide(false); });
+  }
+
+  btnStep.addEventListener("click", function () { clearInterval(timer); timer = null; if (!done.length && queue.length) markActive(queue[0].st); step(); });
+  btnRun.addEventListener("click", function () {
+    if (timer) return;
+    if (queue.length) markActive(queue[0].st);
+    timer = setInterval(function () { if (!step()) { clearInterval(timer); timer = null; } }, 1100);
+  });
+  btnReset.addEventListener("click", reset);
+  select(SCENARIOS[0]);
+
+  // ------------------------------------------------------------ concepts
+  var CONCEPTS = [
+    { n: "Evento", w: "Fato de negócio com tipo, colaborador, data efetiva e dados. Basta para disparar e alimentar o fluxo inteiro.", st: ["intake"], tela: "Cenários, evento manual", cod: "pipeline.submit_event", aud: ["negocio", "tecnico"] },
+    { n: "Caso", w: "Registro do evento na linha: estágio, decisões, plano, recibos, aprovações, auditoria, trilha e próximo passo.", st: ["intake", "verification"], tela: "Linha, Detalhe do caso", cod: "hr:case:{id}", aud: ["tecnico", "negocio"] },
+    { n: "Idempotência", w: "O mesmo evento nunca abre dois casos; o segundo envio vira DUPLICADO e aponta para o original.", st: ["intake"], tela: "Detalhe do caso", cod: "SET NX hr:event:{id}", aud: ["tecnico", "arquitetura", "seguranca"] },
+    { n: "Contrato vigente", w: "A versão de cada contrato usada é a vigente na data efetiva do evento. Nova versão não apaga a anterior.", st: ["intake", "eligibility"], tela: "Contratos", cod: "contracts.py", aud: ["negocio", "arquitetura"] },
+    { n: "Regra com tipo", w: "BLOQUEANTE barra, EXCECIONAVEL barra até a persona aprovar, ALERTA só registra. Sempre com base legal e explicação.", st: ["eligibility", "audit"], tela: "Detalhe do caso, Contratos", cod: "engine.py, expr.py", aud: ["negocio", "seguranca"] },
+    { n: "Avaliador seguro", w: "Expressões de um subconjunto do Python interpretadas sobre a AST com lista branca. Sem eval.", st: ["eligibility", "planning", "audit"], tela: "Contratos (validação)", cod: "expr.py", aud: ["seguranca", "tecnico"] },
+    { n: "Exceção com dono", w: "A regra diz quem pode aprovar. Justificativa obrigatória; persona errada é recusada; tudo vai para o log.", st: ["eligibility"], tela: "Aprovações", cod: "pipeline.decide", aud: ["negocio", "seguranca"] },
+    { n: "Estado alvo", w: "Como deve estar quem ocupa o cargo: jornada, faixa, verbas, benefícios, acessos, equipamentos, cláusulas, certificações.", st: ["planning", "audit"], tela: "Colaboradores (conformidade)", cod: "engine.target_state", aud: ["negocio", "arquitetura"] },
+    { n: "Plano derivado", w: "Operações explícitas do processo mais as derivadas da diferença com o estado alvo. Descartes explicados.", st: ["planning"], tela: "Detalhe do caso", cod: "engine.py", aud: ["arquitetura", "tecnico"] },
+    { n: "Prateleira", w: "35 operações desacopladas e parametrizáveis em 12 sistemas, cada uma com campos alterados e compensação.", st: ["planning", "execution"], tela: "Prateleira", cod: "shelf.py", aud: ["tecnico", "arquitetura"] },
+    { n: "Estado projetado", w: "Cópia do colaborador com o plano aplicado em simulação. É o que a auditoria avalia.", st: ["audit"], tela: "Detalhe do caso", cod: "engine.py", aud: ["arquitetura", "seguranca"] },
+    { n: "Auditoria antes da execução", w: "Nenhum sistema é alterado antes de regras e IA aprovarem o plano projetado. Rejeitar aqui não deixa rastro nos sistemas.", st: ["audit"], tela: "Detalhe do caso", cod: "ADR 0018", aud: ["negocio", "seguranca", "arquitetura"] },
+    { n: "Agente de conferência", w: "IA que classifica a elegibilidade (consultiva), audita o plano e confere a execução. Sempre APROVADO ou REPROVADO.", st: ["eligibility", "audit", "verification"], tela: "Aba do agente, Desempenho", cod: "agent.py, engines.py, llm.py", aud: ["negocio", "tecnico", "seguranca"] },
+    { n: "Revisão humana", w: "Quando o agente reprova o que as regras aprovam, ou no modo SEMPRE. Auditoria interna ou Compliance decidem.", st: ["audit", "verification"], tela: "Aprovações", cod: "pipeline.py", aud: ["negocio", "seguranca"] },
+    { n: "Saga e compensação", w: "Operações em ordem com recibo; falha desfaz as anteriores em ordem inversa, restaurando os campos declarados.", st: ["execution"], tela: "Detalhe do caso", cod: "pipeline.py, shelf.py", aud: ["tecnico", "arquitetura"] },
+    { n: "Trava e versão", w: "Um caso por colaborador por vez; cadastro alterado depois do plano força replanejamento (até 3 vezes).", st: ["execution"], tela: "Log (REPLANEJAMENTO)", cod: "hr:lock:employee:{id}", aud: ["tecnico", "arquitetura"] },
+    { n: "Conferência final", w: "Prova que o executado é igual ao auditado. Divergência vai à Auditoria interna; confirmar reverte.", st: ["verification"], tela: "Detalhe do caso", cod: "engine.py", aud: ["negocio", "seguranca"] },
+    { n: "Próximo passo", w: "Em cada fase o caso diz o que acontece agora, quem precisa agir e o que aprovar ou rejeitar provoca.", st: ["intake", "eligibility", "planning", "audit", "execution", "verification"], tela: "Linha, Detalhe do caso", cod: "domain.py", aud: ["negocio"] },
+    { n: "Hierarquia", w: "Gestor imediato de cada colaborador; regras usam a hierarquia e a aprovação do Gestor mostra a pessoa real.", st: ["eligibility"], tela: "Colaboradores (organograma)", cod: "context.py", aud: ["negocio"] },
+    { n: "Evento coletivo", w: "Evento sem colaborador que abre um caso filho por pessoa selecionada, como o reajuste da CCT.", st: ["intake"], tela: "Linha", cod: "pipeline.py", aud: ["negocio", "arquitetura"] },
+    { n: "Programa com vigência", w: "Participação com prazo cujas concessões entram no estado alvo enquanto ativo; agenda de aviso e vencimento.", st: ["intake", "planning"], tela: "Vigências", cod: "vigencia.py, clock.py", aud: ["negocio", "tecnico"] },
+    { n: "Log de decisões", w: "Registro append-only de regras, escolhas, execuções, compensações, pareceres e aprovações, com ator.", st: ["intake", "eligibility", "planning", "audit", "execution", "verification"], tela: "Log", cod: "logbook.py", aud: ["seguranca", "negocio", "arquitetura"] },
+    { n: "Painel e métricas", w: "Funil, gargalos, regras que mais barram, aprovações, concordância IA e regras; métricas Prometheus.", st: [], tela: "Visão, /api/metrics", cod: "facts.py", aud: ["negocio", "tecnico"] },
+    { n: "Perguntas em linguagem natural", w: "Interpretação, evidências calculadas em Python e resposta com citações verificadas sobre todos os eventos.", st: [], tela: "Perguntar", cod: "ask.py, embeddings.py, indexer.py", aud: ["negocio", "tecnico", "seguranca"] },
+    { n: "Provedor de IA trocável", w: "Ollama por padrão; Claude, OpenAI ou Gemini pelo assistente. Chaves fora do Redis, do log e da API.", st: ["eligibility", "audit", "verification"], tela: "Assistente, Configurações", cod: "llm.py, apikeys.py", aud: ["seguranca", "arquitetura", "tecnico"] },
+    { n: "Motores Qwen e JEV", w: "Generativo ou modelo de decisão com probabilidades. A comparação mede latência e concordância nos mesmos casos.", st: ["eligibility", "audit", "verification"], tela: "Desempenho", cod: "engines.py, metrics.py", aud: ["arquitetura", "tecnico"] }
+  ];
+
+  var cGrid = document.getElementById("conceptGrid");
+  var cFilters = document.getElementById("conceptFilters");
+  [["todos", "Todos"], ["negocio", "Negócio"], ["tecnico", "Técnico"], ["seguranca", "Segurança"], ["arquitetura", "Arquitetura"]].forEach(function (f, i) {
+    var b = el("button", { class: "seg", type: "button", "data-f": f[0], "aria-pressed": i === 0 ? "true" : "false" }, f[1]);
+    b.addEventListener("click", function () { applyConceptFilter(f[0]); });
+    cFilters.appendChild(b);
+  });
+  CONCEPTS.forEach(function (c) {
+    var chips = c.st.length ? c.st.map(function (k) { return '<span class="tag acc chip-stage" data-k="' + k + '" tabindex="0">' + esc(stageName(k)) + "</span>"; }).join("") : '<span class="tag">leitura (fora da linha)</span>';
+    var card = el("div", { class: "card concept", "data-aud": c.aud.join(" ") },
+      "<h3>" + esc(c.n) + "</h3><p class=\"small\" style=\"margin:0\">" + esc(c.w) + "</p><div>" + chips + "</div>" +
+      '<div class="meta"><b>Onde ver:</b> ' + esc(c.tela) + '<br><b>Código:</b> <code>' + esc(c.cod) + "</code></div>");
+    cGrid.appendChild(card);
+  });
+  cGrid.addEventListener("click", function (e) {
+    var t = e.target.closest(".chip-stage"); if (!t) return;
+    var k = t.getAttribute("data-k");
+    document.querySelectorAll(".stage").forEach(function (n) { n.classList.toggle("hl", n.getAttribute("data-k") === k); });
+    document.getElementById("simulador").scrollIntoView({ behavior: "smooth" });
+    setTimeout(function () { document.querySelectorAll(".stage.hl").forEach(function (n) { n.classList.remove("hl"); }); }, 2600);
+  });
+  function applyConceptFilter(f) {
+    cFilters.querySelectorAll(".seg").forEach(function (b) { b.setAttribute("aria-pressed", b.getAttribute("data-f") === f ? "true" : "false"); });
+    cGrid.querySelectorAll(".concept").forEach(function (c) { c.classList.toggle("dim", f !== "todos" && (" " + c.getAttribute("data-aud") + " ").indexOf(" " + f + " ") < 0); });
+  }
+
+  // ------------------------------------------------------------ rule playground
+  var rMeses = document.getElementById("rMeses"), rMin = document.getElementById("rMin"), rTipo = document.getElementById("rTipo");
+  function renderRule() {
+    var m = +rMeses.value, min = +rMin.value, tipo = rTipo.value;
+    document.getElementById("rMesesV").textContent = m;
+    document.getElementById("rMinV").textContent = min;
+    document.getElementById("ruleYaml").textContent =
+      "- id: PRM-05\n  descricao: Interstício mínimo no cargo atual\n  expressao: \"meses_no_cargo >= politica.promocao.meses_minimos_no_cargo\"\n  tipo: " + tipo +
+      (tipo === "EXCECIONAVEL" ? "\n  aprovadores: [HRBP]" : "") +
+      "\n  base_legal: Política de movimentação interna\n  explicacao_falha: \"Colaborador está há {meses_no_cargo} meses no cargo; mínimo de {politica.promocao.meses_minimos_no_cargo}.\"\n\n# politica.promocao.meses_minimos_no_cargo = " + min + "\n# meses_no_cargo (calculado na data efetiva) = " + m;
+    var ok = m >= min, out = document.getElementById("rOut"), expl = "Colaborador está há " + m + " meses no cargo; mínimo de " + min + ".";
+    if (ok) out.innerHTML = '<div class="outcome ok">Regra atendida<span class="why">' + m + " &gt;= " + min + ". O caso segue para o planejamento se as demais regras passarem.</span></div>";
+    else if (tipo === "BLOQUEANTE") out.innerHTML = '<div class="outcome bad">NAO_ELEGIVEL<span class="why">' + esc(expl) + " Nenhuma persona pode liberar.</span></div>";
+    else if (tipo === "EXCECIONAVEL") out.innerHTML = '<div class="outcome warn">EXCECAO_NECESSARIA, aguardando HRBP<span class="why">' + esc(expl) + " O caso para em Aprovações até o HRBP decidir com justificativa.</span></div>";
+    else out.innerHTML = '<div class="outcome warn">Alerta registrado<span class="why">' + esc(expl) + " O caso segue; o alerta fica no log e no caso.</span></div>";
+  }
+  [rMeses, rMin, rTipo].forEach(function (x) { x.addEventListener("input", renderRule); });
+  renderRule();
+
+  // ------------------------------------------------------------ target state
+  var CARGOS = {
+    JR: { nome: "Analista Júnior", jornada: "6h NORMAL_224", faixa: "4.800 a 6.800", verbas: [], ben: { SAUDE: "BASICO", ODONTO: "BASICO", SEGURO_VIDA: "PADRAO" }, acessos: ["EMAIL", "BI_CORPORATIVO"], equip: ["NOTEBOOK"], cert: [] },
+    PL: { nome: "Analista Pleno", jornada: "6h NORMAL_224", faixa: "6.800 a 9.500", verbas: [], ben: { SAUDE: "PRATA", ODONTO: "BASICO", SEGURO_VIDA: "PADRAO" }, acessos: ["EMAIL", "BI_CORPORATIVO", "DATALAKE_LEITURA"], equip: ["NOTEBOOK"], cert: [] },
+    COORD: { nome: "Coordenador", jornada: "8h CONFIANCA_224_2", faixa: "11.000 a 16.000", verbas: ["GRAT_FUNCAO (55% do salário)"], ben: { SAUDE: "OURO", ODONTO: "PLUS", SEGURO_VIDA: "GESTAO", PREVIDENCIA: "CONTRIBUICAO_5" }, acessos: ["EMAIL", "BI_CORPORATIVO", "APROVACAO_PONTO_EQUIPE", "PORTAL_GESTOR"], equip: ["NOTEBOOK", "CELULAR_CORPORATIVO"], cert: [] },
+    GAG: { nome: "Gerente Geral de Agência", jornada: "8h GESTAO_62_II", faixa: "15.000 a 24.000", verbas: ["GRAT_GESTAO (40% do salário)"], ben: { SAUDE: "PLATINA", ODONTO: "PLUS", SEGURO_VIDA: "GESTAO", PREVIDENCIA: "CONTRIBUICAO_6" }, acessos: ["EMAIL", "CRM_VAREJO", "CREDITO_ALCADA_3", "TESOURARIA_AGENCIA", "APROVACAO_PONTO_EQUIPE", "PORTAL_GESTOR", "PLATAFORMA_INVESTIMENTOS"], equip: ["NOTEBOOK", "CELULAR_CORPORATIVO"], cert: ["CPA-20"] }
+  };
+  function listDiff(a, b) {
+    var out = [];
+    b.forEach(function (x) { out.push(a.indexOf(x) >= 0 ? esc(x) : '<span class="diff-add">+ ' + esc(x) + "</span>"); });
+    a.forEach(function (x) { if (b.indexOf(x) < 0) out.push('<span class="diff-del">' + esc(x) + "</span>"); });
+    return out.join("<br>") || '<span class="muted">nenhum</span>';
+  }
+  function renderAlvo() {
+    var a = CARGOS.JR, b = CARGOS[document.getElementById("alvoSel").value], ops = [];
+    var benA = Object.keys(a.ben).map(function (k) { return k + " " + a.ben[k]; }), benB = Object.keys(b.ben).map(function (k) { return k + " " + b.ben[k]; });
+    var rows = [["Jornada", esc(a.jornada), a.jornada === b.jornada ? esc(b.jornada) : '<span class="diff-add">' + esc(b.jornada) + "</span>"],
+      ["Faixa salarial", esc(a.faixa), '<span class="diff-add">' + esc(b.faixa) + "</span>"],
+      ["Verbas", listDiff([], a.verbas), listDiff(a.verbas, b.verbas)],
+      ["Benefícios", benA.map(esc).join("<br>"), listDiff(benA, benB)],
+      ["Acessos", a.acessos.map(esc).join("<br>"), listDiff(a.acessos, b.acessos)],
+      ["Equipamentos", a.equip.map(esc).join("<br>"), listDiff(a.equip, b.equip)],
+      ["Certificações exigidas", '<span class="muted">nenhuma</span>', b.cert.length ? '<span class="diff-add">' + b.cert.map(esc).join(", ") + "</span>" : '<span class="muted">nenhuma</span>']];
+    document.getElementById("alvoTbl").innerHTML = "<tr><th></th><th>Atual (" + esc(a.nome) + ")</th><th>Alvo (" + esc(b.nome) + ")</th></tr>" + rows.map(function (r) { return "<tr><td><b>" + r[0] + "</b></td><td>" + r[1] + "</td><td>" + r[2] + "</td></tr>"; }).join("");
+    ops.push(["ALTERAR_CARGO", "processo", "Cargo destino do evento"]);
+    ops.push(["ALTERAR_SALARIO", "processo", "Maior entre o proposto, o atual e o mínimo da faixa (" + b.faixa.split(" ")[0] + ")"]);
+    if (a.jornada !== b.jornada) ops.push(["ALTERAR_JORNADA", "derivada", b.jornada + " (CLT art. 224 ou art. 62)"]);
+    b.verbas.forEach(function (v) { ops.push(["ADICIONAR_VERBA", "derivada", v]); });
+    Object.keys(b.ben).forEach(function (k) { if (!a.ben[k]) ops.push(["ADICIONAR_BENEFICIO", "derivada", k + " " + b.ben[k]]); else if (a.ben[k] !== b.ben[k]) ops.push(["ALTERAR_BENEFICIO", "derivada", k + " " + a.ben[k] + " para " + b.ben[k]]); });
+    b.acessos.forEach(function (x) { if (a.acessos.indexOf(x) < 0) ops.push(["CONCEDER_ACESSO", "derivada", x]); });
+    a.acessos.forEach(function (x) { if (b.acessos.indexOf(x) < 0) ops.push(["REVOGAR_ACESSO", "derivada", x]); });
+    b.equip.forEach(function (x) { if (a.equip.indexOf(x) < 0) ops.push(["PROVISIONAR_EQUIPAMENTO", "derivada", x]); });
+    ops.push(["ENVIAR_ESOCIAL", "processo", "S-2206 alteração contratual"]);
+    ops.push(["NOTIFICAR", "processo", "Colaborador, gestor e áreas"]);
+    document.getElementById("alvoOps").innerHTML = ops.map(function (o) { return "<li class=\"small\"><code>" + o[0] + "</code> " + (o[1] === "derivada" ? '<span class="tag acc">derivada</span>' : '<span class="tag">do processo</span>') + esc(o[2]) + "</li>"; }).join("");
+    var w = document.getElementById("alvoWarn");
+    if (b.cert.length) w.innerHTML = '<div class="outcome bad">Regra de entrada do cargo<span class="why">O cargo exige CPA-20. Sem a certificação, a promoção é bloqueada na elegibilidade, antes do plano (cenário "Promoção a gerente sem CPA-20"). O salto de níveis também pede exceção do HRBP.</span></div>';
+    else if (b === CARGOS.COORD) w.innerHTML = '<div class="outcome warn">Salto de níveis<span class="why">De nível 2 para 5: a regra PRM-04 (salto máximo da política) pede exceção do HRBP antes do plano.</span></div>';
+    else w.innerHTML = "";
+  }
+  document.getElementById("alvoSel").addEventListener("change", renderAlvo);
+  renderAlvo();
+
+  // ------------------------------------------------------------ decision matrix
+  function renderMatrix() {
+    var r = document.getElementById("mRegras").value, a = document.getElementById("mAgente").value, m = document.getElementById("mModo").value, o;
+    if (r === "blq") o = ["bad", "REJEITADO", "Regra bloqueante falhou. O parecer do agente fica registrado, mas nenhuma pessoa nem a IA podem liberar. Nenhum sistema foi alterado."];
+    else if (r === "exc") o = ["warn", "AGUARDANDO_APROVACAO (exceção)", "A exceção vai para as personas listadas na regra." + (m === "SEMPRE" ? " No modo SEMPRE, também há revisão humana do plano." : "") + " A recomendação do agente (" + a + ") aparece ao lado."];
+    else if (a === "REPROVADO") o = ["warn", "AGUARDANDO_APROVACAO (revisão humana)", "As regras passaram, mas o agente reprovou. Auditoria interna ou Compliance decidem com justificativa; a divergência entra no painel."];
+    else if (m === "SEMPRE") o = ["warn", "AGUARDANDO_APROVACAO (revisão humana)", "Modo SEMPRE: todo plano passa por uma pessoa, mesmo com regras e agente de acordo."];
+    else o = ["ok", "Segue para a Execução", "Regras atendidas e agente APROVADO. Nenhuma intervenção humana necessária."];
+    document.getElementById("mOut").innerHTML = '<div class="outcome ' + o[0] + '">' + o[1] + '<span class="why">' + o[2] + "</span></div>";
+  }
+  ["mRegras", "mAgente", "mModo"].forEach(function (id) { document.getElementById(id).addEventListener("change", renderMatrix); });
+  renderMatrix();
+
+  // ------------------------------------------------------------ spend cap (PR #8)
+  var capUsed = document.getElementById("capUsed");
+  function renderCap() {
+    var p = +capUsed.value, o;
+    document.getElementById("capUsedV").textContent = p + "%";
+    if (p >= 100) o = ["bad", "Chamadas externas bloqueadas", "O gasto mais a estimativa do prompt passa do teto: a chamada não é enviada, os casos ficam em Aguardando agente de IA e retomam sozinhos quando o teto aumenta ou o período vira."];
+    else if (p >= 80) o = ["warn", "Aviso de gasto", "Acima do percentual de aviso configurado. As chamadas continuam; o selo no topo muda de cor."];
+    else o = ["ok", "Dentro do teto", "Cada chamada externa é precificada pelos tokens informados pelo provedor e pelo preço do modelo."];
+    document.getElementById("capOut").innerHTML = '<div class="outcome ' + o[0] + '">' + o[1] + '<span class="why">' + o[2] + "</span></div>";
+  }
+  capUsed.addEventListener("input", renderCap);
+  renderCap();
+
+  // ------------------------------------------------------------ validity
+  var vClock = document.getElementById("vClock"), vTl = document.getElementById("vTimeline");
+  var START = new Date(2026, 0, 15), MAXD = 420, END = 365, AVISO = END - 30;
+  function addDays(d, n) { var x = new Date(d.getTime()); x.setDate(x.getDate() + n); return x; }
+  function fmt(d) { return ("0" + d.getDate()).slice(-2) + "/" + ("0" + (d.getMonth() + 1)).slice(-2) + "/" + d.getFullYear(); }
+  [[0, "Inclusão"], [AVISO, "Aviso (30 dias antes)"], [END, "Vencimento (12 meses)"]].forEach(function (m) {
+    var mk = el("div", { class: "mk", "data-d": m[0] }, esc(m[1]) + "<br>" + fmt(addDays(START, m[0])));
+    mk.style.left = (m[0] / MAXD * 100) + "%";
+    vTl.appendChild(mk);
+  });
+  var nowMk = el("div", { class: "now", "aria-hidden": "true" }); vTl.appendChild(nowMk);
+  function renderVig() {
+    var d = +vClock.value;
+    document.getElementById("vClockV").textContent = fmt(addDays(START, d)) + " (dia " + d + " do programa)";
+    document.getElementById("vFill").style.width = (Math.min(d, END) / MAXD * 100) + "%";
+    nowMk.style.left = (d / MAXD * 100) + "%";
+    vTl.querySelectorAll(".mk").forEach(function (m) { m.classList.toggle("hit", d >= +m.getAttribute("data-d")); });
+    var ativo = d < END;
+    document.getElementById("vSit").innerHTML = ativo ? '<span class="tag ok">ATIVO</span> faltam ' + (END - d) + " dias" : '<span class="tag bad">ENCERRADO</span> vencido em ' + fmt(addDays(START, END));
+    var con = ["Verba BOLSA_ALTO_POTENCIAL (1.200,00)", "Benefício MENTORIA_EXECUTIVA", "Acesso PLATAFORMA_LIDERANCA"];
+    document.getElementById("vCon").innerHTML = con.map(function (c) { return ativo ? '<div class="small">' + esc(c) + "</div>" : '<div class="small diff-del">' + esc(c) + "</div>"; }).join("");
+    var ev = ['<div><span class="tag">' + fmt(START) + "</span> colaborador.programa_alto_potencial_iniciado: plano com INCLUIR_PROGRAMA, ADICIONAR_VERBA, ADICIONAR_BENEFICIO, CONCEDER_ACESSO</div>"];
+    if (d >= AVISO) ev.push('<div><span class="tag warn">' + fmt(addDays(START, AVISO)) + "</span> colaborador.programa_a_vencer: REGISTRAR_AVISO_PROGRAMA e NOTIFICAR</div>");
+    if (d >= END) ev.push('<div><span class="tag bad">' + fmt(addDays(START, END)) + "</span> colaborador.programa_expirado: ENCERRAR_PROGRAMA, REMOVER_VERBA, REMOVER_BENEFICIO, REVOGAR_ACESSO</div>");
+    document.getElementById("vEv").innerHTML = ev.join("");
+  }
+  vClock.addEventListener("input", renderVig);
+  renderVig();
+
+  // ------------------------------------------------------------ architecture
+  var ARCH = {
+    frontend: ["frontend", "Interface React servida por nginx na porta 8580. Faz proxy de /api e mantém o SSE em /api/stream sem buffer, para a Linha atualizar ao vivo.", "1 instância", "frontend/src/, nginx.conf"],
+    api: ["api", "FastAPI: REST, SSE, geração de times e cenários, aprovações, painel, busca e perguntas. Não executa estágios e não guarda estado.", "1 ou mais", "backend/hrlab/api.py"],
+    ia: ["Provedor de IA", "Ollama local, na rede ou em container (padrão), ou Anthropic Claude, OpenAI e compatíveis, Google Gemini. Usado pelo agente de conferência, pelo agente de perguntas e pelos embeddings. O motor JEV usa o Ollama 0.35+.", "externo ou perfil ollama", "llm.py, engines.py, apikeys.py"],
+    redis: ["redis", "Fila de cada estágio (streams com grupo hr-workers), documentos JSON de casos, colaboradores, contratos e aprovações, log append-only, pub/sub para a interface e índice vetorial. AOF ligado; sem porta publicada.", "1 instância", "store.py, logbook.py"],
+    worker: ["worker", "Um loop por estágio da linha. Executa os handlers, chama o agente de conferência, monitora a saúde da IA a cada 10 segundos e confere a agenda de vigências a cada 5.", "docker compose up --scale worker=N", "worker.py, pipeline.py, engine.py, shelf.py"],
+    indexer: ["indexer", "Lê o log com o grupo hr-indexer e mantém os embeddings das narrativas dos casos e das decisões relevantes, para a busca semântica e o agente de perguntas.", "1 instância", "indexer.py, embeddings.py, facts.py"]
+  };
+  var archInfo = document.getElementById("archInfo");
+  function selArch(k) {
+    document.querySelectorAll(".arch .node").forEach(function (n) { n.classList.toggle("sel", n.getAttribute("data-k") === k); });
+    var a = ARCH[k];
+    archInfo.innerHTML = "<h3>" + esc(a[0]) + "</h3><p>" + esc(a[1]) + '</p><p class="small"><b>Escala:</b> ' + esc(a[2]) + '<br><b>Código:</b> <code>' + esc(a[3]) + "</code></p>";
+  }
+  document.querySelectorAll(".arch .node").forEach(function (n) { n.addEventListener("click", function () { selArch(n.getAttribute("data-k")); }); });
+  selArch("worker");
+
+  // ------------------------------------------------------------ audiences
+  var AUD = [
+    ["Negócio", "Toda operação de RH passa pela mesma linha, que confere, planeja, audita antes de alterar, executa com garantia de desfazer e explica cada decisão. As regras são do RH.", ["Linha ao vivo: promoção sem interstício e aprovação do HRBP", "Regras: mudar o interstício e ver o efeito", "Estado alvo: promoção para coordenador", "Vigências: avançar o relógio"], "docs/negocio.md"],
+    ["Times técnicos", "Seis estágios com fila por estágio, contratos como dados, prateleira de operações compensáveis e lógica de decisão pura, testável sem Redis e sem rede.", ["Arquitetura: worker, redis e indexer", "Linha ao vivo: falha no sistema de benefícios", "Conceitos filtrados por Técnico", "Regras: variáveis e funções das expressões"], "docs/arquitetura.md, docs/contratos.md, docs/prateleira.md, docs/api.md, docs/operacao.md"],
+    ["Segurança", "As decisões são protegidas por desenho; o acesso não, porque é um laboratório. A lista de lacunas e o caminho para produção estão escritos.", ["Linha ao vivo: tentar aprovar com a persona errada", "IA: o que a IA nunca faz", "Segurança: controles e lacunas", "Regras: avaliador seguro"], "docs/seguranca.md"],
+    ["Arquitetura", "A linha separa decidir, planejar, auditar e executar; os contratos separam comportamento do código; a IA entra como auditora medida, com provedor e motor trocáveis.", ["Arquitetura: princípios e consistência", "Estado alvo: plano derivado", "IA: matriz de decisão e motores", "Linha ao vivo: IA discorda das regras"], "docs/arquitetura.md, docs/adr/README.md, docs/visibilidade.md"]
+  ];
+  var audCards = document.getElementById("audCards");
+  AUD.forEach(function (a) {
+    audCards.appendChild(el("div", { class: "card" }, "<h3>" + esc(a[0]) + "</h3><p>" + esc(a[1]) + '</p><div class="sub muted small" style="font-weight:600;text-transform:uppercase;letter-spacing:.5px">O que mostrar nesta página</div><ul class="small">' + a[2].map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + '</ul><p class="small"><b>Documentos:</b> <code>' + esc(a[3]) + "</code></p>"));
+  });
+})();
+</script>
+</body>
+</html>

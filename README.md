@@ -105,7 +105,7 @@ cd backend && pip install -r requirements.txt -r requirements-dev.txt
 python -m hrlab.worker &
 python -m hrlab.indexer &
 uvicorn hrlab.api:app --reload --port 8000
-python -m pytest -q tests      # 42 testes, sem Redis e sem rede
+python -m pytest -q tests      # 61 testes, sem Redis e sem rede
 
 # frontend
 cd frontend && npm install && npm run dev   # http://localhost:5173

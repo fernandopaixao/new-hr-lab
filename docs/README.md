@@ -18,6 +18,18 @@ Esta pasta explica o propósito, o desenho e as decisões da arquitetura. Ela fo
 | [API](api.md) | Integradores | Rotas HTTP agrupadas por assunto |
 | [Glossário](glossario.md) | Todos | Termos de RH, de regulação e da arquitetura usados no laboratório |
 
+## Para apresentar a solução
+
+| Documento | Para quem | O que responde |
+| --- | --- | --- |
+| [Documento completo](solucao-completa.md) | Todos | Tudo o que é relevante num único arquivo: valor, conceitos, linha, contratos, prateleira, IA, vigências, visibilidade, arquitetura, segurança, operação, API, ADRs e caminho para produção |
+| [Demonstração interativa](demo/index.html) | Todos | Página HTML que funciona sem o laboratório: linha ao vivo com cenários, conceitos e onde são aplicados, regras, estado alvo, IA, vigências, arquitetura e segurança |
+| [Negócio](negocio.md) | Pessoas, HRBP, folha, benefícios, jurídico, compliance | Problema, capacidades, exemplos, papéis, indicadores, benefícios e piloto |
+| [Segurança](seguranca.md) | Segurança da informação e privacidade | Ativos, controles, lacunas aceitas, ameaças, LGPD e endurecimento para produção |
+| [Roteiro de apresentação](apresentacao.md) | Quem apresenta | Roteiros cronometrados por público e perguntas frequentes |
+
+A [Arquitetura](arquitetura.md) também traz princípios, visão de contexto, atributos de qualidade, trade-offs e caminho para produção.
+
 ## Aviso
 
 Os valores de piso, benefícios, gratificações e demais parâmetros da CCT dos bancários usados nos contratos de exemplo são **ilustrativos e fictícios**. Eles servem para simular situações reais e não são referência jurídica.

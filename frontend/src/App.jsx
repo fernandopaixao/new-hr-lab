@@ -133,8 +133,8 @@ export default function App() {
           </button>
           {external && gastos ? (
             <button className={`btn sm spend-chip ${spendBlocked ? 'bad' : gastos.alerta ? 'warn' : ''}`} onClick={() => setPage('config')}
-              title={`Gasto com LLM externa (${gastos.periodo_rotulo}) e teto cadastrado`}>
-              {usd(gastos.gasto_usd)} / {usd(gastos.teto_usd)}
+              title={`Gasto com LLM externa (${gastos.periodo_rotulo})${gastos.teto_usd > 0 ? ' e teto cadastrado' : ', sem teto'}`}>
+              {usd(gastos.gasto_usd)}{gastos.teto_usd > 0 ? ` / ${usd(gastos.teto_usd)}` : ''}
             </button>
           ) : null}
           <span title={health?.ok ? (health.motor === 'jev' ? `Agente: JEV, ${health.jev?.modelo}` : `Agente: ${health.provedor_nome || 'Ollama'}, ${health.modelo}`) : (health?.erro || '')}>

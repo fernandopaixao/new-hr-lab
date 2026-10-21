@@ -63,7 +63,7 @@ docker compose up -d --build
 
 Escolha no assistente (ou em Configurações) entre Anthropic Claude, OpenAI ou compatível (Azure OpenAI, OpenRouter, Groq, vLLM, trocando a URL base) e Google Gemini. A chave digitada no assistente fica num arquivo do volume de dados, nunca no Redis nem no log; uma chave em `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` ou `GEMINI_API_KEY` no `.env` tem prioridade. Com um provedor na nuvem, os dados dos casos (fictícios) vão para a API do provedor, que cobra por uso. Veja [docs/agentes.md](docs/agentes.md#provedores).
 
-Com provedor externo, o assistente também cadastra um **teto de gastos** em dólares (mensal ou total, US$ 10 por padrão). Cada chamada é precificada pelos tokens informados pelo provedor; atingido o teto, nenhuma chamada nova é enviada, os casos aguardam a IA e uma faixa vermelha aparece no topo da tela, além da entrada no log. O painel em Configurações mostra o gasto, os preços por modelo e as últimas chamadas ([ADR 0025](docs/adr/0025-teto-de-gastos-com-llm-externa.md)).
+Com provedor externo, o assistente também permite cadastrar um **teto de gastos** opcional em dólares (mensal ou total). Cada chamada é precificada pelos tokens informados pelo provedor e o gasto aparece na barra do topo; com teto, ao atingi-lo, nenhuma chamada nova é enviada, os casos aguardam a IA e uma faixa vermelha aparece no topo da tela, além da entrada no log. O painel em Configurações mostra o gasto, os preços por modelo e as últimas chamadas ([ADR 0025](docs/adr/0025-teto-de-gastos-com-llm-externa.md)).
 
 ### Motor JEV
 

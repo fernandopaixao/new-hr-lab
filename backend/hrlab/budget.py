@@ -10,8 +10,10 @@ Redis, which survive restarts (AOF) and the lab reset:
 - `hr:gastos:precos` price overrides typed in the interface;
 - `hr:gastos:bloqueio` set while the cap is reached, with when and why.
 
-Before each external call `check` compares the spend of the current period plus
-the estimated cost of the prompt with the cap. Once the cap is reached every new
+The cap and the prices are optional. Without a cap (0) the spend is only counted
+and shown; nothing is blocked. With a cap, before each external call `check`
+compares the spend of the current period plus the estimated cost of the prompt
+with the cap. Once the cap is reached every new
 external call is refused before it is sent: llm.py raises BudgetExceeded, which is
 an AgentUnavailable, so cases wait as they do when the provider is down (or the
 simulated agent answers, if enabled). Calls already in flight finish and are
@@ -160,17 +162,14 @@ class Ledger:
         if not is_external(prov):
             return
         cap = float(settings.get("spend_cap_usd") or 0)
-        spent = await self.spent(settings)
-        price = price_for(prov, model, await self.overrides())
-        estimate = cost(price, est_tokens_in, 0)
-        if cap > 0 and spent + estimate <= cap:
+        spent = await self.spent(settings) if cap > 0 else 0.0
+        estimate = cost(price_for(prov, model, await self.overrides()), est_tokens_in, 0) if cap > 0 else 0.0
+        if cap <= 0 or spent + estimate <= cap:
+            # no cap (optional) or room left
             if await self.store.r.exists(BLOCK_KEY):
                 await self.store.r.delete(BLOCK_KEY)
             return
-        if cap <= 0:
-            reason = "nenhum teto de gastos cadastrado para provedores externos"
-        else:
-            reason = f"teto de gastos atingido: {usd(spent)} gastos de {usd(cap)} ({period_label(settings)})"
+        reason = f"teto de gastos atingido: {usd(spent)} gastos de {usd(cap)} ({period_label(settings)})"
         msg = (f"{reason}. Nenhuma chamada nova é feita a {NAMES.get(prov, prov)} até o teto ser aumentado, o período virar "
                "ou o contador ser zerado em Configurações > Teto de gastos.")
         if mark:
@@ -242,8 +241,8 @@ class Ledger:
             "por_modelo": by_model,
             "alerta": cap > 0 and spent >= cap * float(settings.get("spend_alert_percent") or 100) / 100,
         }
-        # with a cap the counters decide; without one only a refused call marks the block
-        blocked = spent >= cap if cap > 0 else bool(block)
+        # the cap is optional: without one nothing is ever blocked
+        blocked = cap > 0 and spent >= cap
         if not blocked and block:
             await self.store.r.delete(BLOCK_KEY)
             block = None

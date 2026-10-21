@@ -138,16 +138,20 @@ def test_reaching_the_cap_blocks_new_calls_before_they_are_sent(env):
     assert not after["bloqueado"] and after["gasto_usd"] == pytest.approx(2.4)
 
 
-def test_a_zero_cap_blocks_every_external_call_but_never_ollama(env):
+def test_the_cap_is_optional_without_it_spend_is_only_counted(env):
     run, calls = env
 
     async def scenario(store):
-        with pytest.raises(llm.BudgetExceeded, match="nenhum teto"):
-            await llm.chat_json(settings(spend_cap_usd=0), "sys", "prompt", PING)
-        await llm.ledger.check(settings(spend_cap_usd=0), "ollama", "qwen2.5:7b", 10**9)
+        s = settings(spend_cap_usd=0)
+        for _ in range(3):
+            await llm.chat_json(s, "sys", "prompt", PING)
+        test = await llm.test_connection(s, "anthropic", "claude-opus-5-5")
+        return await llm.ledger.status(s), test
 
-    run(scenario)
-    assert calls == []
+    st, test = run(scenario)
+    assert len(calls) == 3 + 2  # three calls plus the test's model list and call: nothing blocked
+    assert st["gasto_usd"] == pytest.approx(3.2) and not st["bloqueado"] and st["percentual"] is None
+    assert test["ok"] and test["etapas"][1]["estado"] == "IGNORADO"
 
 
 def test_embeddings_are_priced_and_blocked_too(env):

@@ -130,11 +130,11 @@ export default function Setup({ onDone, onCancel }) {
   const cur = STEPS[step][0]
   const canNext = {
     conexao: simulated || !needsKey,
-    gastos: !usesExternal || Number(vals.spend_cap_usd) > 0,
     embeddings: !embNeedsKey,
   }[cur] ?? true
   const modelPrice = EXTERNAL.includes(prov) ? priceOf(info.precos, prov, vals[MODEL_KEY[prov]]) : null
   const price = priceEdit || modelPrice
+  const hasCap = Number(vals.spend_cap_usd) > 0
   const typical = price ? callCost(price) : null
   const datalist = [...new Set([...(p.modelos || []), ...models])]
 
@@ -268,14 +268,14 @@ export default function Setup({ onDone, onCancel }) {
           {cur === 'gastos' && (
             <div className="col">
               {!usesExternal ? (
-                <div className="callout">{simulated ? 'Sem IA' : 'Com o Ollama'} não há custo por token, então o teto não se aplica agora. O valor abaixo fica guardado e passa a valer se um provedor externo for escolhido depois.</div>
+                <div className="callout">{simulated ? 'Sem IA' : 'Com o Ollama'} não há custo por token, então o teto não se aplica agora. O que for escolhido aqui fica guardado e passa a valer se um provedor externo for escolhido depois.</div>
               ) : (
-                <p>Cadastre quanto o laboratório pode gastar com {EXTERNAL.includes(prov) ? info.provedores[prov].nome : info.provedores[embProv].nome}. Antes de cada chamada externa o gasto é conferido; atingido o teto, <b>nenhuma chamada nova é feita</b>, os casos aguardam a IA e uma mensagem de erro aparece no topo da tela e no log.</p>
+                <p>Teto e preço são opcionais. Sem teto, o laboratório só conta e mostra o gasto com {EXTERNAL.includes(prov) ? info.provedores[prov].nome : info.provedores[embProv].nome}. Com teto, o gasto é conferido antes de cada chamada externa; atingido o teto, <b>nenhuma chamada nova é feita</b>, os casos aguardam a IA e uma mensagem de erro aparece no topo da tela e no log.</p>
               )}
-              <div className="form-grid">
+              <label className="check"><input type="checkbox" checked={hasCap} onChange={(e) => set({ spend_cap_usd: e.target.checked ? 10 : 0 })} /> Cadastrar um teto de gastos</label>
+              {hasCap ? <div className="form-grid">
                 <label className="field">Teto de gastos (US$)
-                  <input type="number" min="0" step="0.5" value={vals.spend_cap_usd} onChange={(e) => set({ spend_cap_usd: Number(e.target.value) })} />
-                  <span className="small muted">0 bloqueia todas as chamadas externas.</span>
+                  <input type="number" min="0" step="0.5" value={vals.spend_cap_usd} onChange={(e) => set({ spend_cap_usd: Number(e.target.value) || 0 })} />
                 </label>
                 <label className="field">Período
                   <select value={vals.spend_period} onChange={(e) => set({ spend_period: e.target.value })}>
@@ -286,19 +286,18 @@ export default function Setup({ onDone, onCancel }) {
                 <label className="field">Aviso no log em (% do teto)
                   <input type="number" min="0" max="100" value={vals.spend_alert_percent} onChange={(e) => set({ spend_alert_percent: Number(e.target.value) })} />
                 </label>
-              </div>
-              {usesExternal && !(Number(vals.spend_cap_usd) > 0) ? <div className="callout bad small">Informe um teto maior que zero para usar um provedor externo.</div> : null}
+              </div> : null}
               {price ? (
                 <>
-                  <h4 className="mt">Preço de {vals[MODEL_KEY[prov]]} (US$ por milhão de tokens)</h4>
+                  <h4 className="mt">Preço de {vals[MODEL_KEY[prov]]} (US$ por milhão de tokens, opcional)</h4>
                   <div className="form-grid">
                     <label className="field">Entrada<input type="number" min="0" step="0.01" value={price.entrada} onChange={(e) => setPriceEdit({ entrada: e.target.value, saida: price.saida })} /></label>
                     <label className="field">Saída<input type="number" min="0" step="0.01" value={price.saida} onChange={(e) => setPriceEdit({ entrada: price.entrada, saida: e.target.value })} /></label>
                   </div>
                   <div className="small muted">
-                    {priceEdit ? 'Preço editado; será salvo ao concluir.' : modelPrice?.origem === 'desconhecido' ? 'Modelo fora da tabela de referência: até você informar o preço, vale o do modelo mais caro do provedor.' : 'Preço da tabela de referência (confira na página do provedor).'}
+                    {priceEdit ? 'Preço editado; será salvo ao concluir.' : modelPrice?.origem === 'desconhecido' ? 'Modelo fora da tabela de referência: sem preço informado, a conta usa o do modelo mais caro do provedor.' : 'Preço da tabela de referência; mude só se o seu for diferente.'}
                     {typical != null ? ` Uma auditoria típica (cerca de 6.000 tokens de entrada e 800 de saída) custa perto de ${usd(typical)}` : ''}
-                    {typical && Number(vals.spend_cap_usd) > 0 ? `; o teto cobre umas ${Math.floor(Number(vals.spend_cap_usd) / typical).toLocaleString('pt-BR')} auditorias.` : '.'}
+                    {typical && hasCap ? `; o teto cobre umas ${Math.floor(Number(vals.spend_cap_usd) / typical).toLocaleString('pt-BR')} auditorias.` : '.'}
                   </div>
                 </>
               ) : null}
@@ -388,7 +387,7 @@ export default function Setup({ onDone, onCancel }) {
             <div className="col">
               <dl className="kv">
                 <dt>IA dos agentes</dt><dd>{simulated ? 'Sem IA (agente simulado)' : `${p.nome}, ${vals[MODEL_KEY[prov]]}`}</dd>
-                {usesExternal ? <><dt>Teto de gastos</dt><dd>{usd(Number(vals.spend_cap_usd) || 0)} {vals.spend_period === 'TOTAL' ? 'no total' : 'por mês'}, aviso em {vals.spend_alert_percent}%</dd></> : null}
+                {usesExternal ? <><dt>Teto de gastos</dt><dd>{hasCap ? `${usd(Number(vals.spend_cap_usd))} ${vals.spend_period === 'TOTAL' ? 'no total' : 'por mês'}, aviso em ${vals.spend_alert_percent}%` : 'sem teto (o gasto só é contado)'}</dd></> : null}
                 {!simulated && p.chave ? <><dt>Chave de API</dt><dd>{key ? 'nova chave, será salva ao concluir' : <KeyStatus st={keyStatus} />}</dd></> : null}
                 {!simulated && prov === 'ollama' ? <><dt>Ollama</dt><dd className="mono">{vals.ollama_base_url}</dd></> : null}
                 {prov === 'openai' && !simulated ? <><dt>URL base</dt><dd className="mono">{vals.openai_base_url}</dd></> : null}

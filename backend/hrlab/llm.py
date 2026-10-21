@@ -635,7 +635,10 @@ async def test_connection(settings: dict, prov: str, model: str, *, api_key: str
             except budget.BudgetExceeded as exc:
                 return finish("teto", str(exc))
             st = await ledger.status(settings)
-            stages["teto"].update(estado="OK", detalhe=f"{budget.usd(st['gasto_usd'])} gastos de {budget.usd(st['teto_usd'])} ({st['periodo_rotulo']})")
+            if st["teto_usd"] > 0:
+                stages["teto"].update(estado="OK", detalhe=f"{budget.usd(st['gasto_usd'])} gastos de {budget.usd(st['teto_usd'])} ({st['periodo_rotulo']})")
+            else:
+                stages["teto"].update(estado="IGNORADO", detalhe=f"sem teto cadastrado; {budget.usd(st['gasto_usd'])} gastos ({st['periodo_rotulo']})")
         else:
             stages["teto"].update(estado="IGNORADO", detalhe="sem controle de gastos neste processo")
     else:

@@ -37,8 +37,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "cloud_timeout_s": int(os.getenv("CLOUD_TIMEOUT_S", "120")),
     "cloud_max_tokens": int(os.getenv("CLOUD_MAX_TOKENS", "16000")),
     "cloud_max_concurrency": int(os.getenv("CLOUD_MAX_CONCURRENCY", "4")),
-    # Spending cap of the external providers in US$ (see budget.py). 0 blocks every external call.
-    "spend_cap_usd": float(os.getenv("SPEND_CAP_USD", "10")),
+    # Optional spending cap of the external providers in US$ (see budget.py). 0: no cap, spend is only counted.
+    "spend_cap_usd": float(os.getenv("SPEND_CAP_USD", "0")),
     # MENSAL: the counter restarts each calendar month (UTC); TOTAL: never restarts.
     "spend_period": os.getenv("SPEND_PERIOD", "MENSAL"),
     # A log entry is written when the spend passes this share of the cap.

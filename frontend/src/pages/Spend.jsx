@@ -100,7 +100,10 @@ export function ApiTestFlow({ r, prov, vals, running }) {
 // ------------------------------------------------------------------ meter
 export function SpendMeter({ g }) {
   if (!g) return null
-  const pct = g.teto_usd > 0 ? Math.min(100, (g.gasto_usd / g.teto_usd) * 100) : 100
+  if (!(g.teto_usd > 0)) {
+    return <div className="row small"><b>{usd(g.gasto_usd)}</b><span className="muted">gastos ({g.periodo_rotulo})</span><span className="right"><Badge>sem teto</Badge></span></div>
+  }
+  const pct = Math.min(100, (g.gasto_usd / g.teto_usd) * 100)
   const tone = g.bloqueado ? 'bad' : g.alerta ? 'warn' : 'ok'
   return (
     <div className="col" style={{ gap: 4 }}>
@@ -146,8 +149,8 @@ export function SpendPanel() {
       <SpendMeter g={g} />
       {g.bloqueado ? <div className="callout bad small"><b>Chamadas externas bloqueadas.</b> {g.bloqueio?.mensagem}</div> : null}
       <div className="form-grid">
-        <label className="field" title="Atingido o teto, nenhuma chamada nova é feita a Anthropic, OpenAI ou Google. 0 bloqueia todas.">Teto (US$)
-          <input type="number" min="0" step="0.5" value={cap.spend_cap_usd} onChange={(e) => setCap({ ...cap, spend_cap_usd: e.target.value })} /></label>
+        <label className="field" title="Opcional. Atingido o teto, nenhuma chamada nova é feita a Anthropic, OpenAI ou Google. Vazio ou 0: sem teto, o gasto só é contado.">Teto (US$, opcional)
+          <input type="number" min="0" step="0.5" placeholder="sem teto" value={cap.spend_cap_usd || ''} onChange={(e) => setCap({ ...cap, spend_cap_usd: Number(e.target.value) || 0 })} /></label>
         <label className="field">Período
           <select value={cap.spend_period} onChange={(e) => setCap({ ...cap, spend_period: e.target.value })}>
             <option value="MENSAL">Mensal (zera todo dia 1)</option>
@@ -163,7 +166,7 @@ export function SpendPanel() {
       </div>
       {external && price ? (
         <>
-          <h4 className="mt">Preço de {g.modelo} (US$ por milhão de tokens)</h4>
+          <h4 className="mt">Preço de {g.modelo} (US$ por milhão de tokens, opcional)</h4>
           <div className="form-grid">
             <label className="field">Entrada<input type="number" min="0" step="0.01" value={price.entrada} onChange={(e) => setPrice({ ...price, entrada: e.target.value })} /></label>
             <label className="field">Saída<input type="number" min="0" step="0.01" value={price.saida} onChange={(e) => setPrice({ ...price, saida: e.target.value })} /></label>
@@ -171,7 +174,7 @@ export function SpendPanel() {
           <div className="row">
             <button className="btn" onClick={savePrice} disabled={busy}>Salvar preço</button>
             {g.preco_modelo.origem === 'editado' ? <button className="btn ghost" onClick={restorePrice} disabled={busy}>Restaurar tabela</button> : null}
-            <span className="small muted">{g.preco_modelo.origem === 'desconhecido' ? 'Modelo fora da tabela: usando o preço do modelo mais caro do provedor até você informar o preço.' : g.preco_modelo.origem === 'editado' ? 'Preço editado por você.' : 'Preço da tabela de referência.'}
+            <span className="small muted">{g.preco_modelo.origem === 'desconhecido' ? 'Modelo fora da tabela: sem preço informado, a conta usa o do modelo mais caro do provedor.' : g.preco_modelo.origem === 'editado' ? 'Preço editado por você.' : 'Preço da tabela de referência.'}
               {typical != null ? ` Uma auditoria típica custa perto de ${usd(typical)}.` : ''}</span>
           </div>
         </>
@@ -192,7 +195,7 @@ export function SpendPanel() {
           </table>
         </details>
       ) : null}
-      <div className="small muted">O custo de cada chamada vem dos tokens informados pelo provedor vezes o preço do modelo. Antes de cada chamada externa o laboratório confere o teto; atingido o teto, a chamada não é enviada, os casos aguardam a IA e a mensagem aparece aqui, no topo da tela e no log. Chamadas que já estavam em andamento terminam e entram no contador.</div>
+      <div className="small muted">O custo de cada chamada vem dos tokens informados pelo provedor vezes o preço do modelo. Teto e preço são opcionais: sem teto o gasto só é contado. Com teto, antes de cada chamada externa o laboratório confere o gasto; atingido o teto, a chamada não é enviada, os casos aguardam a IA e a mensagem aparece aqui, no topo da tela e no log. Chamadas que já estavam em andamento terminam e entram no contador.</div>
     </div>
   )
 }

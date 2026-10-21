@@ -100,7 +100,7 @@ Todas podem ser alteradas na tela Configurações sem reiniciar; as variáveis d
 | Modelo e URL base OpenAI | `OPENAI_MODEL`, `OPENAI_BASE_URL` | `gpt-5-mini`, `https://api.openai.com/v1` | Usados com `openai`; a URL aceita serviços compatíveis. |
 | Modelo Gemini | `GEMINI_MODEL` | `gemini-2.5-flash` | Usado com `gemini`. |
 | Nuvem: timeout, tokens, simultâneas | `CLOUD_TIMEOUT_S`, `CLOUD_MAX_TOKENS`, `CLOUD_MAX_CONCURRENCY` | 120, 16000, 4 | Por chamada e por processo de worker. |
-| Teto de gastos, período, aviso | `SPEND_CAP_USD`, `SPEND_PERIOD`, `SPEND_ALERT_PERCENT` | 10, MENSAL, 80 | Em US$. 0 bloqueia todas as chamadas externas. Ver ADR 0025. |
+| Teto de gastos, período, aviso | `SPEND_CAP_USD`, `SPEND_PERIOD`, `SPEND_ALERT_PERCENT` | 0, MENSAL, 80 | Em US$. Opcional: 0 é sem teto (o gasto só é contado). Ver ADR 0025. |
 | URL do Ollama | `OLLAMA_BASE_URL` | `http://localhost:11434` (o compose usa `host.docker.internal`) | Onde estão os modelos. |
 | Modelo do conferente | `OLLAMA_MODEL` | `qwen2.5:7b` | Auditoria antes da execução e conferência final. |
 | Timeout | `OLLAMA_TIMEOUT_S` | 180 | Segundos por chamada. |

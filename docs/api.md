@@ -61,6 +61,7 @@ Veja a [ADR 0023](adr/0023-eventos-com-vigencia.md).
 | --- | --- | --- |
 | `GET /api/approvals` | `pendentes`, `limit` | Aprovações, com a recomendação do agente e, quando a regra pede o Gestor, o gestor imediato real em `responsavel`. Tipos: `EXCECAO_ELEGIBILIDADE` (exceção de regra), `REVISAO_AUDITORIA` (antes da execução) e `REVISAO_CONFERENCIA_FINAL` (depois; rejeitar reverte). |
 | `POST /api/approvals/{id}/decide` | `{decisao: APROVAR ou REJEITAR, justificativa, persona}` | Decide. A persona precisa estar entre os aprovadores; a justificativa é obrigatória (mínimo de 5 caracteres). |
+| `POST /api/approvals/batch` | `{ids, decisao: APROVAR ou REJEITAR, justificativa, persona}` | Decide em lote (até 200). Cada aprovação passa pela decisão unitária e recebe o campo `lote`; o resultado traz `lote`, `decididas`, `ignoradas`, `falhas` e, por item, `resultado` (`DECIDIDA`, `IGNORADA` ou `FALHOU`) e `motivo`. Veja a [ADR 0026](adr/0026-aprovacao-em-lote.md). |
 
 ## Colaboradores
 

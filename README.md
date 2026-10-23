@@ -89,7 +89,7 @@ Na tela Cenários, a aba "Rajada de eventos" dispara dezenas de eventos aleatór
 | Visão | Painel de visibilidade: KPIs, alertas, linha do tempo, funil, tempo por estágio, evento por situação, regras que mais barram, operações, aprovações, agente e índice. |
 | Perguntar | Perguntas em linguagem natural sobre todos os eventos, busca semântica e histórico. Cada resposta mostra a interpretação, os números exatos e as fontes. |
 | Cenários | 54 cenários reais, de exceção, de bloqueio, coletivos e de estresse, cada um com o resultado esperado. Também traz a suíte completa com comparação entre esperado e obtido, evento manual e rajada. |
-| Aprovações | Exceções de elegibilidade e revisões humanas do plano e da auditoria. Troque a persona no topo para decidir como HRBP, Jurídico, Compliance, Comitê e outras. |
+| Aprovações | Exceções de elegibilidade e revisões humanas do plano e da auditoria. Troque a persona no topo para decidir como HRBP, Jurídico, Compliance, Comitê e outras. Filtre e selecione várias pendentes para aprovar ou rejeitar em lote, com uma justificativa; cada decisão fica registrada individualmente. |
 | Colaboradores | Time artificial: edite cargo, datas, salário, conduta, estabilidades e dependentes; veja os programas ativos e o tempo que falta; injete desvios; confira a conformidade; dispare eventos. |
 | Vigências | Relógio simulado (avançar dias ou ir para uma data) e agenda de avisos e vencimentos dos programas ativos, com o caso que cada evento abriu. |
 | Contratos | Editor estruturado e YAML para incluir ou remover regras e operações, mudar vigências e salvar como nova versão. |

@@ -837,6 +837,15 @@ async def list_approvals(pendentes: bool = False, limit: int = 300) -> list[dict
     return await store.list_approvals(pending_only=pendentes, limit=limit)
 
 
+@app.post("/api/approvals/batch")
+async def decide_batch(body: dict = Body(...), x_persona: str = Header("OPERADOR")) -> dict:
+    try:
+        return await pipeline.decide_batch(body.get("ids") or [], body.get("persona") or x_persona,
+                                           body.get("decisao", ""), body.get("justificativa", ""))
+    except (ValueError, PermissionError) as exc:
+        raise http_error(exc) from exc
+
+
 @app.post("/api/approvals/{ap_id}/decide")
 async def decide(ap_id: str, body: dict = Body(...), x_persona: str = Header("OPERADOR")) -> dict:
     try:

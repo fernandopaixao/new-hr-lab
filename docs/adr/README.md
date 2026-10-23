@@ -29,3 +29,4 @@ Cada registro segue o mesmo formato: contexto, decisão, alternativas considerad
 | [0023](0023-eventos-com-vigencia.md) | Eventos com vigência (programa de alto potencial), agenda derivada e relógio simulado | pedida pelo usuário |
 | [0024](0024-motor-jev-e-painel-de-desempenho.md) | Motor JEV (modelo de decisão tev1:0.8b) ao lado do Qwen e painel de desempenho dos agentes | pedida pelo usuário |
 | [0025](0025-teto-de-gastos-com-llm-externa.md) | Teto de gastos com LLM externa, bloqueio antes da chamada e assistente "Ollama ou externo" | pedida pelo usuário |
+| [0026](0026-aprovacao-em-lote.md) | Aprovação em lote, decidida e registrada uma a uma | pedida pelo usuário |

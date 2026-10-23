@@ -45,6 +45,9 @@ def _get_path(obj: dict, dotted: str) -> Any:
     return cur
 
 
+MAX_BATCH = 200
+
+
 class Pipeline:
     def __init__(self, store: Store):
         self.store = store
@@ -574,7 +577,7 @@ class Pipeline:
                         case_id=case_id, colaborador_id=case.get("colaborador_id"), estagio=stage, dados={"aprovacao": ap["id"], "regra": (regra or {}).get("id")})
         return ap
 
-    async def decide(self, ap_id: str, persona: str, decisao: str, justificativa: str) -> dict:
+    async def decide(self, ap_id: str, persona: str, decisao: str, justificativa: str, *, lote: str | None = None) -> dict:
         ap = await self.store.get_approval(ap_id)
         if not ap:
             raise ValueError("aprovação não encontrada")
@@ -588,6 +591,8 @@ class Pipeline:
             raise ValueError("justificativa obrigatória (mínimo 5 caracteres)")
         ap.update({"status": "APROVADA" if decisao == "APROVAR" else "REJEITADA", "decidido_por": {"persona": persona, **PERSONAS.get(persona, {})},
                    "justificativa": justificativa.strip(), "decidido_em": now_ms()})
+        if lote:
+            ap["lote"] = lote
         await self.store.save_approval(ap)
         case = await self.store.get_case(ap["case_id"])
         case["aguardando"] = [a for a in case.get("aguardando") or [] if a.get("id") != ap_id]
@@ -596,11 +601,48 @@ class Pipeline:
                 {"regra_id": (ap.get("regra") or {}).get("id"), "aprovacao": ap_id, "por": persona, "justificativa": ap["justificativa"]}]
         await self.store.save_case(case)
         await log.write(self.store, log.APROVACAO_DECIDIDA,
-                        f"{ap['tipo_rotulo']} {ap['status'].lower()} por {PERSONAS.get(persona, {}).get('pessoa')} ({persona}): {ap['justificativa']}",
+                        f"{ap['tipo_rotulo']} {ap['status'].lower()} por {PERSONAS.get(persona, {}).get('pessoa')} ({persona})"
+                        f"{f' no lote {lote}' if lote else ''}: {ap['justificativa']}",
                         ator=f"persona:{persona}", case_id=ap["case_id"], colaborador_id=ap.get("colaborador_id"), estagio=ap["estagio"],
                         dados={"aprovacao": ap})
         await self._after_decision(ap)
         return ap
+
+    async def decide_batch(self, ids: list[str], persona: str, decisao: str, justificativa: str) -> dict:
+        """Decides several approvals with the same decision and justification.
+
+        Each approval goes through `decide`, so it is validated, recorded and logged on its own exactly like a
+        single decision, with the batch id attached. One approval that cannot be decided does not stop the others.
+        """
+        ids = list(dict.fromkeys(i for i in ids or [] if i))
+        if not ids:
+            raise ValueError("selecione ao menos uma aprovação")
+        if len(ids) > MAX_BATCH:
+            raise ValueError(f"no máximo {MAX_BATCH} aprovações por lote")
+        if decisao not in ("APROVAR", "REJEITAR"):
+            raise ValueError("decisão deve ser APROVAR ou REJEITAR")
+        if len((justificativa or "").strip()) < 5:
+            raise ValueError("justificativa obrigatória (mínimo 5 caracteres)")
+        lote = new_id("lote")
+        results = []
+        for ap_id in ids:
+            try:
+                ap = await self.decide(ap_id, persona, decisao, justificativa, lote=lote)
+                results.append({"id": ap_id, "resultado": "DECIDIDA", "status": ap["status"], "case_id": ap["case_id"]})
+            except (ValueError, PermissionError) as exc:
+                current = await self.store.get_approval(ap_id) or {}
+                skipped = current.get("status") not in (None, "PENDENTE")
+                results.append({"id": ap_id, "resultado": "IGNORADA" if skipped else "FALHOU", "status": current.get("status"),
+                                "case_id": current.get("case_id"), "motivo": str(exc)})
+        count = {k: sum(1 for r in results if r["resultado"] == k) for k in ("DECIDIDA", "IGNORADA", "FALHOU")}
+        verb = "aprovação" if decisao == "APROVAR" else "rejeição"
+        await log.write(self.store, log.APROVACAO_LOTE,
+                        f"{lote}: {verb} em lote por {PERSONAS.get(persona, {}).get('pessoa')} ({persona}): {len(ids)} selecionada(s), "
+                        f"{count['DECIDIDA']} decidida(s), {count['IGNORADA']} ignorada(s), {count['FALHOU']} com falha. "
+                        f"Justificativa: {justificativa.strip()}",
+                        ator=f"persona:{persona}", dados={"lote": lote, "decisao": decisao, "resultados": results})
+        return {"lote": lote, "decisao": decisao, "persona": persona, "total": len(ids),
+                "decididas": count["DECIDIDA"], "ignoradas": count["IGNORADA"], "falhas": count["FALHOU"], "resultados": results}
 
     async def _after_decision(self, ap: dict) -> None:
         case = await self.store.get_case(ap["case_id"])
